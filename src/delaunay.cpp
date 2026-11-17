@@ -46,6 +46,7 @@ int insertPoint(Mesh& mesh, Point p) {
     int idx = static_cast<int>(mesh.addPoint(p)); 
     
     std::vector<std::size_t> bad;
+    std::vector<bool> isBad(mesh.meshTriangle.size(), false);
 
     for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
         const Triangle& tri = mesh.meshTriangle[ti];
@@ -54,6 +55,7 @@ int insertPoint(Mesh& mesh, Point p) {
             mesh.meshPoint[tri.v2],
             mesh.meshPoint[idx]) ) {
             bad.push_back(ti);
+            isBad[ti] = true;
         }
     }
 
@@ -76,7 +78,7 @@ int insertPoint(Mesh& mesh, Point p) {
 
     std::vector<Triangle> keep;
     for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
-        if (std::find(bad.begin(), bad.end(), ti) == bad.end()) {
+        if (!isBad[ti]) {
             keep.push_back(mesh.meshTriangle[ti]);
         }
     }

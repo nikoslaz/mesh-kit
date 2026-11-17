@@ -28,6 +28,10 @@ add_executable(meshkit_cli apps/main.cpp)
 target_link_libraries(meshkit_cli PRIVATE meshkit)
 target_compile_options(meshkit_cli PRIVATE -Wall -Wextra -Wpedantic)
 
+# Benchmark (use -DCMAKE_BUILD_TYPE=Release)
+add_executable(meshkit_bench apps/bench.cpp)
+target_link_libraries(meshkit_bench PRIVATE meshkit)
+
 # Tests:  cmake --build build && ctest --test-dir build
 enable_testing()
 foreach(t test_geometry test_delaunay test_io test_domain test_refine test_topology)
