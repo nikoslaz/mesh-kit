@@ -93,3 +93,20 @@ void refineMesh(Mesh& mesh, std::vector<Segment>& segments, const std::vector<Po
     }
 }
 
+Mesh meshDomain(const Domain& d, double maxRatio) {
+    Mesh mesh = makeSuperTriangle(d.points);
+
+    for (const auto& p : d.points) {
+        insertPoint(mesh, p);
+    }
+
+    std::vector<Segment> segs;
+    for (const auto& s : d.segments) {
+        segs.push_back({s.a + 3, s.b + 3});
+    }
+
+    refineMesh(mesh, segs, d.holes, maxRatio);
+    std::vector<bool> inside = insideTriangles(mesh, segs, d.holes);
+
+    return extractInside(mesh, inside);
+}

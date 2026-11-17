@@ -10,5 +10,6 @@ std::vector<Segment> splitEncroachedSegments(Mesh& mesh, std::vector<Segment> se
 int splitSegment(Mesh& mesh, std::vector<Segment>& segments, std::size_t i);
 int findEncroachedSegment(const Mesh& mesh, const std::vector<Segment>& segments, const Point& p);
 void refineMesh(Mesh& mesh, std::vector<Segment>& segments,const std::vector<Point>& holes, double maxRatio);
+Mesh meshDomain(const Domain& d, double maxRatio);
 
 #endif

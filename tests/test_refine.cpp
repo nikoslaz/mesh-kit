@@ -256,6 +256,60 @@ int main() {
                   mesh.meshPoint.size() == pointsAfter, true);
     }
 
+    std::cout << "--- meshDomain: the whole pipeline ---\n";
+    {
+        const double sqrt2 = std::sqrt(2.0);
+        Domain d = makePlateWithHole(16);
+        Domain copy = d;
+
+        Mesh r = meshDomain(d, sqrt2);
+
+        checkBool("the domain is not modified (points)",   d.points.size() == copy.points.size(), true);
+        bool segsSame = d.segments.size() == copy.segments.size();
+        for (std::size_t i = 0; segsSame && i < d.segments.size(); ++i)
+            if (d.segments[i].a != copy.segments[i].a || d.segments[i].b != copy.segments[i].b) segsSame = false;
+        checkBool("the domain is not modified (segments keep their indices)", segsSame, true);
+
+        double area = 0, minAng = 180.0, maxRatio = 0;
+        for (const auto& t : r.meshTriangle) {
+            const Point& a = r.meshPoint[t.v0];
+            const Point& b = r.meshPoint[t.v1];
+            const Point& c = r.meshPoint[t.v2];
+            area += std::fabs(orientation(a, b, c)) / 2;
+            minAng = std::min(minAng, minAngle(a, b, c) * 180.0 / M_PI);
+            maxRatio = std::max(maxRatio, radiusEdgeRatio(a, b, c));
+        }
+        double expected = 100.0 - 0.5 * 16 * 2 * 2 * std::sin(2 * M_PI / 16);
+        std::cout << "  (" << r.meshPoint.size() << " points, " << r.meshTriangle.size()
+                  << " triangles, min angle " << minAng << " deg)\n";
+        checkBool("48 points",     r.meshPoint.size() == 48, true);
+        checkBool("64 triangles",  r.meshTriangle.size() == 64, true);
+        checkBool("area equals plate minus hole", std::fabs(area - expected) < 1e-9, true);
+        checkBool("every triangle has ratio <= sqrt(2)", maxRatio <= sqrt2, true);
+        checkBool("min angle >= 20 degrees", minAng >= 20.0, true);
+
+        Mesh again = meshDomain(d, sqrt2);
+        checkBool("calling it twice gives the same result",
+                  again.meshPoint.size() == r.meshPoint.size() &&
+                  again.meshTriangle.size() == r.meshTriangle.size(), true);
+
+        Mesh finer = meshDomain(d, 1.0);
+        checkBool("a stricter limit (1.0) gives a finer mesh",
+                  finer.meshTriangle.size() > r.meshTriangle.size(), true);
+        double fineMin = 180.0;
+        for (const auto& t : finer.meshTriangle)
+            fineMin = std::min(fineMin, minAngle(finer.meshPoint[t.v0], finer.meshPoint[t.v1],
+                                                 finer.meshPoint[t.v2]) * 180.0 / M_PI);
+        std::cout << "  (limit 1.0: " << finer.meshPoint.size() << " points, "
+                  << finer.meshTriangle.size() << " triangles, min angle " << fineMin << " deg)\n";
+        checkBool("a stricter limit gives a larger minimum angle", fineMin > minAng, true);
+
+        Domain empty;
+        Mesh e = meshDomain(empty, sqrt2);
+        checkBool("an empty domain gives an empty mesh",
+                  e.meshPoint.empty() && e.meshTriangle.empty(), true);
+    }
+
     std::cout << "\n" << (failures == 0 ? "ALL REFINE TESTS PASSED" : "SOME TESTS FAILED")
               << " (" << failures << " failure(s))\n";
     return failures == 0 ? 0 : 1;
