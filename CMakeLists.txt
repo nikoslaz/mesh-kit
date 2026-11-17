@@ -17,6 +17,7 @@ add_library(meshkit
     src/predicate.c
     src/domain.cpp
     src/refine.cpp
+    src/topology.cpp
 )
 set_source_files_properties(src/predicate.c PROPERTIES COMPILE_OPTIONS "-w")
 target_include_directories(meshkit PUBLIC include)
@@ -29,7 +30,7 @@ target_compile_options(meshkit_cli PRIVATE -Wall -Wextra -Wpedantic)
 
 # Tests:  cmake --build build && ctest --test-dir build
 enable_testing()
-foreach(t test_geometry test_delaunay test_io test_domain test_refine)
+foreach(t test_geometry test_delaunay test_io test_domain test_refine test_topology)
     add_executable(${t} tests/${t}.cpp)
     target_link_libraries(${t} PRIVATE meshkit)
     add_test(NAME ${t} COMMAND ${t} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
