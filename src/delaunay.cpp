@@ -3,7 +3,7 @@
 #include <map>
 #include <utility>
 
-Mesh delaunay(const std::vector<Point>& points) {
+Mesh makeSuperTriangle(const std::vector<Point>& points) {
     Mesh mesh;
     if (points.empty()) return mesh;
 
@@ -15,7 +15,6 @@ Mesh delaunay(const std::vector<Point>& points) {
     double cx, cy;
 
     for (const auto& point: points) {
-        mesh.addPoint(point);
         maxX = std::max(maxX, point.x);
         minX = std::min(minX, point.x);
         maxY = std::max(maxY, point.y);
@@ -40,66 +39,86 @@ Mesh delaunay(const std::vector<Point>& points) {
 
     mesh.addTriangle(t);
 
-    for (std::size_t i = 0; i < points.size(); i++) {
-        std::vector<std::size_t> bad;
+    return mesh;
+}
 
-        for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
-            const Triangle& tri = mesh.meshTriangle[ti];
-            if (inCircumcircle(mesh.meshPoint[tri.v0],
-               mesh.meshPoint[tri.v1],
-               mesh.meshPoint[tri.v2],
-               mesh.meshPoint[i]) ) {
-                bad.push_back(ti);
-            }
+int insertPoint(Mesh& mesh, Point p) {
+    int idx = static_cast<int>(mesh.addPoint(p)); 
+    
+    std::vector<std::size_t> bad;
+
+    for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
+        const Triangle& tri = mesh.meshTriangle[ti];
+        if (inCircumcircle(mesh.meshPoint[tri.v0],
+            mesh.meshPoint[tri.v1],
+            mesh.meshPoint[tri.v2],
+            mesh.meshPoint[idx]) ) {
+            bad.push_back(ti);
         }
-
-        std::map<std::pair<int,int>, int> edgeCount;
-        for (const auto& ti : bad) {
-            const Triangle& tri = mesh.meshTriangle[ti];
-            std::pair<int,int> key;
-            // edge 1: between v0 and v1
-            key = { std::min(tri.v0, tri.v1), std::max(tri.v0, tri.v1) };   
-            edgeCount[key]++;
-
-            // edge 2: between v1 and v2
-            key = { std::min(tri.v1, tri.v2), std::max(tri.v1, tri.v2) };   
-            edgeCount[key]++;
-
-            // edge 3: between v2 and v0
-            key = { std::min(tri.v2, tri.v0), std::max(tri.v2, tri.v0) };
-            edgeCount[key]++;
-        }
-
-        std::vector<Triangle> keep;
-        for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
-            if (std::find(bad.begin(), bad.end(), ti) == bad.end()) {
-                keep.push_back(mesh.meshTriangle[ti]);
-            }
-        }
-
-        for (const auto& entry : edgeCount) {
-                if (entry.second == 1) {
-                    Triangle newTriang = {static_cast<int>(i) ,entry.first.first, entry.first.second};
-                    keep.push_back(newTriang);
-                }
-
-        }
-
-        mesh.meshTriangle = keep;
     }
 
-    // Cleanup, after ALL points are inserted: drop every triangle that uses a
-    // super-triangle corner (those corners have indices >= n), then drop the
-    // corners themselves (they are the last 3 points in the vector).
-    const int n = static_cast<int>(points.size());
+    std::map<std::pair<int,int>, int> edgeCount;
+    for (const auto& ti : bad) {
+        const Triangle& tri = mesh.meshTriangle[ti];
+        std::pair<int,int> key;
+        // edge 1: between v0 and v1
+        key = { std::min(tri.v0, tri.v1), std::max(tri.v0, tri.v1) };   
+        edgeCount[key]++;
+
+        // edge 2: between v1 and v2
+        key = { std::min(tri.v1, tri.v2), std::max(tri.v1, tri.v2) };   
+        edgeCount[key]++;
+
+        // edge 3: between v2 and v0
+        key = { std::min(tri.v2, tri.v0), std::max(tri.v2, tri.v0) };
+        edgeCount[key]++;
+    }
+
+    std::vector<Triangle> keep;
+    for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
+        if (std::find(bad.begin(), bad.end(), ti) == bad.end()) {
+            keep.push_back(mesh.meshTriangle[ti]);
+        }
+    }
+
+    for (const auto& entry : edgeCount) {
+            if (entry.second == 1) {
+                Triangle newTriang = {static_cast<int>(idx) ,entry.first.first, entry.first.second};
+                keep.push_back(newTriang);
+            }
+
+    }
+
+    mesh.meshTriangle = keep;
+    
+    return idx;
+}
+
+void removeSuperTriangle(Mesh& mesh) { 
     std::vector<Triangle> result;
+
     for (const auto& tri : mesh.meshTriangle) {
-        if (tri.v0 < n && tri.v1 < n && tri.v2 < n) {
+        if (tri.v0 >= 3 && tri.v1 >= 3 && tri.v2 >= 3) {
             result.push_back(tri);
         }
     }
-    mesh.meshTriangle = result;
-    mesh.meshPoint.resize(n);
 
+    for (auto& tri : result) {
+        tri.v0 -= 3;
+        tri.v1 -= 3;
+        tri.v2 -= 3;
+    }
+
+    mesh.meshPoint.erase(mesh.meshPoint.begin(), mesh.meshPoint.begin() + 3);
+    mesh.meshTriangle = result;
+}
+
+Mesh delaunay(const std::vector<Point>& points) {
+    if (points.empty()) return Mesh{};
+    Mesh mesh = makeSuperTriangle(points);
+    for (const auto& point : points) {
+        insertPoint(mesh, point);
+    }
+    removeSuperTriangle(mesh);
     return mesh;
 }

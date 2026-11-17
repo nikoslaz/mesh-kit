@@ -6,5 +6,6 @@
 #include "quality.hpp"
 
 Mesh delaunay(const std::vector<Point>& points);
+int insertPoint(Mesh& mesh, Point p);
 
 #endif
