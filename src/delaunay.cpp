@@ -5,10 +5,12 @@
 
 Mesh delaunay(const std::vector<Point>& points) {
     Mesh mesh;
-    double maxX = 0;
-    double minX = 0;
-    double maxY = 0;
-    double minY = 0;
+    if (points.empty()) return mesh;
+
+    double maxX = points[0].x;
+    double minX = points[0].x;
+    double maxY = points[0].y;
+    double minY = points[0].y;
     double width, height, m;
     double cx, cy;
 

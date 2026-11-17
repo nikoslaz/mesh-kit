@@ -18,8 +18,11 @@ smallest angle (blue = poor, red = good), viewed in ParaView.*
 
 ## Features
 
-- **Delaunay triangulation** (Bowyer-Watson) using exact orientation and in-circumcircle
-  predicates, tested against an independent convex hull on grids and random point sets.
+- **Delaunay triangulation** (Bowyer-Watson) using robust adaptive-precision orientation and
+  in-circumcircle predicates (Shewchuk), tested against an independent convex hull on grids
+  and random point sets. On a set of nearly collinear points, a plain floating-point
+  orientation test gave a vertex-order-dependent sign in 13,968 of 65,536 cases (21%); the
+  robust predicates gave 0 (see `tests/test_geometry.cpp`).
 - **Quality metrics**: per-triangle minimum angle.
 - **Laplacian smoothing**: interior vertices move to the average of their neighbours;
   boundary vertices stay fixed.
@@ -116,3 +119,8 @@ output/         generated files (VTK, Nastran, CSV); not committed
 - Multithreaded smoothing and quality evaluation, with benchmarks on large meshes
 - Faster triangulation (spatial search for the containing triangle instead of a scan)
 - More formats (Gmsh writer, Nastran reader) and quad elements
+
+## Credits
+
+`src/predicate.c` is Jonathan Richard Shewchuk's robust predicates code (public domain),
+from <https://www.cs.cmu.edu/~quake/robust.html>. It is compiled as C and left unmodified.

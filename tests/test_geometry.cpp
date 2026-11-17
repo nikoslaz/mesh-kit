@@ -46,6 +46,28 @@ int main() {
     checkBool("cw d=(2,2) outside",        inCircumcircle({0,0}, {0,1}, {1,0}, {2, 2}),      false);
     checkBool("cw d=(1,1) on circle",      inCircumcircle({0,0}, {0,1}, {1,0}, {1, 1}),      false);
 
+    std::cout << "--- orientation, nearly collinear (robustness) ---\n";
+    // p moves on a 256x256 grid of spacing 2^-53 around (0.5, 0.5); q and r lie on y = x.
+    // The sign of orientation must not depend on which vertex the triangle starts from.
+    {
+        const Point q{12, 12};
+        const Point r{24, 24};
+        const double u = std::ldexp(1.0, -53);
+        auto sgn = [](double v) { return (v > 0) - (v < 0); };
+        int inconsistent = 0;
+        for (int i = 0; i < 256; ++i) {
+            for (int j = 0; j < 256; ++j) {
+                const Point p{0.5 + i * u, 0.5 + j * u};
+                int s1 = sgn(orientation(p, q, r));
+                int s2 = sgn(orientation(q, r, p));
+                int s3 = sgn(orientation(r, p, q));
+                if (s1 != s2 || s2 != s3) ++inconsistent;
+            }
+        }
+        std::cout << "inconsistent orientations: " << inconsistent << " of 65536\n";
+        checkBool("orientation sign is consistent under rotation", inconsistent == 0, true);
+    }
+
     std::cout << "\n" << (failures == 0 ? "ALL TESTS PASSED" : "SOME TESTS FAILED")
               << " (" << failures << " failure(s))\n";
     return failures == 0 ? 0 : 1;

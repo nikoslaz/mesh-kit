@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(meshkit LANGUAGES CXX)
+project(meshkit LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,7 +14,9 @@ add_library(meshkit
     src/quality.cpp
     src/smoothing.cpp
     src/mesh_io.cpp
+    src/predicate.c
 )
+set_source_files_properties(src/predicate.c PROPERTIES COMPILE_OPTIONS "-w")
 target_include_directories(meshkit PUBLIC include)
 target_compile_options(meshkit PRIVATE -Wall -Wextra -Wpedantic)
 

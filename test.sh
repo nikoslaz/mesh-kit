@@ -5,15 +5,19 @@ cd "$(dirname "$0")" || exit 1
 
 BUILD_DIR="${BUILD_DIR:-build}"
 CXX="${CXX:-g++}"
+CC="${CC:-gcc}"
 FLAGS="-std=c++20 -Wall -Wextra -Wpedantic -Iinclude"
 LIB_SRC=$(ls src/*.cpp)          # all library sources, so new files are picked up automatically
 
 mkdir -p "$BUILD_DIR"
 status=0
 
+# Shewchuk's predicates are C: compile once to an object file, then link it.
+$CC -w -c src/predicate.c -o "$BUILD_DIR/predicate.o" || exit 1
+
 for t in test_geometry test_delaunay test_io; do
     echo "===== $t ====="
-    if $CXX $FLAGS tests/$t.cpp $LIB_SRC -o "$BUILD_DIR/$t"; then
+    if $CXX $FLAGS tests/$t.cpp $LIB_SRC "$BUILD_DIR/predicate.o" -o "$BUILD_DIR/$t"; then
         "$BUILD_DIR/$t" || status=1
     else
         echo "BUILD FAILED: $t"
