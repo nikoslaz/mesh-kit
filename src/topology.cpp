@@ -1,6 +1,8 @@
 #include "topology.hpp"
 #include "geometry.hpp"
 #include <algorithm>
+#include <set>
+#include <utility>
 
 std::map<std::pair<int,int>, std::vector<int>> buildEdgeMap(const Mesh& mesh) {
     std::map<std::pair<int,int>, std::vector<int>> edgeMap;
@@ -43,4 +45,80 @@ int findTriangleContaining(const Mesh& mesh, const Point& p) {
         }
     }
     return -1;
+}
+
+
+std::vector<bool> insideTriangles(const Mesh& mesh, const std::vector<Segment>& segments, const std::vector<Point>& holes) {
+    std::map<std::pair<int,int>, std::vector<int>> edgeMap = buildEdgeMap(mesh);
+
+    std::set<std::pair<int,int>> walls;
+    for (std::size_t ti = 0; ti < segments.size(); ti++) {
+        const Segment& seg = segments[ti];
+        std::pair<int,int> w;
+        w = {std::min(seg.a,seg.b), std::max(seg.a,seg.b)};   
+        walls.insert(w);
+    }
+
+    std::vector<bool> painted(mesh.meshTriangle.size(), false);
+    std::vector<int> stack;
+
+    for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
+        const Triangle& t = mesh.meshTriangle[ti];
+        bool touchesCorner = t.v0 < 3 || t.v1 < 3 || t.v2 < 3;
+        if (touchesCorner) {
+            painted[ti] = true;
+            stack.push_back(static_cast<int>(ti));
+        }
+    }
+
+    for (const auto& h : holes) {
+        int t = findTriangleContaining(mesh, h);
+        if (t == -1) {continue;}
+        painted[t] = true;
+        stack.push_back(t);
+    }
+
+    while (!stack.empty()) {
+        int t = stack.back();
+        stack.pop_back();
+        Triangle tri = mesh.meshTriangle[t];
+        std::pair<int,int> key;
+
+        // edge 1: between v0 and v1
+        key = { std::min(tri.v0, tri.v1), std::max(tri.v0, tri.v1) };   
+        if (walls.count(key) == 0) {
+            for (const auto& n : edgeMap[key]) {
+                if (!painted[n]) {
+                    painted[n] = true;
+                    stack.push_back(n);
+                }
+            }
+        }
+
+        // edge 2: between v1 and v2
+        key = { std::min(tri.v1, tri.v2), std::max(tri.v1, tri.v2) };   
+        if (walls.count(key) == 0) {
+            for (const auto& n : edgeMap[key]) {
+                if (!painted[n]) {
+                    painted[n] = true;
+                    stack.push_back(n);
+                }
+            }
+        }
+
+        // edge 3: between v2 and v0
+        key = { std::min(tri.v2, tri.v0), std::max(tri.v2, tri.v0) };
+        if (walls.count(key) == 0) {
+            for (const auto& n : edgeMap[key]) {
+                if (!painted[n]) {
+                    painted[n] = true;
+                    stack.push_back(n);
+                }
+            }
+        }
+    }
+
+    std::vector<bool> inside(mesh.meshTriangle.size());
+    for (std::size_t t = 0; t < inside.size(); t++) inside[t] = !painted[t];
+    return inside;
 }

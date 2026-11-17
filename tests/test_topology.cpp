@@ -1,8 +1,12 @@
+#include <cmath>
 #include <iostream>
 #include <set>
+#include <vector>
 
 #include "delaunay.hpp"
+#include "domain.hpp"
 #include "geometry.hpp"
+#include "refine.hpp"
 #include "topology.hpp"
 
 static int failures = 0;
@@ -113,6 +117,61 @@ int main() {
             if (ti < 0 || !contains(grid, ti, p)) gridOk = false;
         }
         checkBool("100 sample points in a 6x6 grid are all found", gridOk, true);
+    }
+
+    std::cout << "--- insideTriangles: plate with a circular hole ---\n";
+    {
+        Domain d = makePlateWithHole(16);
+        Mesh mesh = makeSuperTriangle(d.points);
+        for (const auto& p : d.points) insertPoint(mesh, p);
+        std::vector<Segment> segs;
+        for (const auto& s : d.segments) segs.push_back({s.a + 3, s.b + 3});
+        segs = splitEncroachedSegments(mesh, segs);
+
+        std::vector<bool> inside = insideTriangles(mesh, segs, d.holes);
+        checkBool("one answer per triangle", inside.size() == mesh.meshTriangle.size(), true);
+
+        auto centroid = [&](const Triangle& t) {
+            const Point& a = mesh.meshPoint[t.v0];
+            const Point& b = mesh.meshPoint[t.v1];
+            const Point& c = mesh.meshPoint[t.v2];
+            return Point{(a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3};
+        };
+
+        std::size_t nIn = 0;
+        bool noCorners = true, insideOk = true, outsideOk = true;
+        double area = 0;
+        for (std::size_t ti = 0; ti < inside.size(); ++ti) {
+            const Triangle& t = mesh.meshTriangle[ti];
+            bool touchesCorner = t.v0 < 3 || t.v1 < 3 || t.v2 < 3;
+            Point c = centroid(t);
+            double r = std::hypot(c.x - 5, c.y - 5);
+            if (inside[ti]) {
+                ++nIn;
+                if (touchesCorner) noCorners = false;
+                bool inPlate = c.x > 0 && c.x < 10 && c.y > 0 && c.y < 10;
+                if (!inPlate || r < 1.9) insideOk = false;
+                area += std::fabs(orientation(mesh.meshPoint[t.v0], mesh.meshPoint[t.v1],
+                                              mesh.meshPoint[t.v2])) / 2;
+            } else if (!touchesCorner) {
+                // not inside and not around the plate: must be a triangle of the hole
+                if (r > 2.0) outsideOk = false;
+            }
+        }
+        checkBool("some triangles are inside", nIn > 0, true);
+        checkBool("some triangles are not inside", nIn < inside.size(), true);
+        checkBool("no inside triangle uses a super-triangle corner", noCorners, true);
+        checkBool("inside triangles lie in the plate and outside the hole", insideOk, true);
+        checkBool("every other non-inside triangle lies in the hole", outsideOk, true);
+
+        int holeTri = findTriangleContaining(mesh, d.holes[0]);
+        checkBool("triangle at the hole centre is not inside",
+                  holeTri >= 0 && !inside[holeTri], true);
+
+        // 10x10 plate minus the regular 16-gon of circumradius 2
+        double expected = 100.0 - 0.5 * 16 * 2 * 2 * std::sin(2 * M_PI / 16);
+        std::cout << "  (inside area " << area << ", expected " << expected << ")\n";
+        checkBool("inside area = plate minus the hole polygon", std::fabs(area - expected) < 1e-9, true);
     }
 
     std::cout << "\n" << (failures == 0 ? "ALL TOPOLOGY TESTS PASSED" : "SOME TESTS FAILED")
