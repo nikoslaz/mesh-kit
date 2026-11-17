@@ -1,6 +1,8 @@
 #include "refine.hpp"
 #include "delaunay.hpp"
 #include "geometry.hpp"
+#include "quality.hpp"
+#include "quality.hpp"
 
 static bool isEncroached(const Mesh& mesh, const Segment& s) {
     for (std::size_t i = 3; i < mesh.meshPoint.size(); i++) {
@@ -13,6 +15,41 @@ static bool isEncroached(const Mesh& mesh, const Segment& s) {
     return false;
 }
 
+int splitSegment(Mesh& mesh, std::vector<Segment>& segments, std::size_t i) {
+    Segment s = segments[i];
+    const Point& A = mesh.meshPoint[s.a];
+    const Point& B = mesh.meshPoint[s.b];
+    Point m = { (A.x + B.x) / 2, (A.y + B.y) / 2 };
+    int mi = insertPoint(mesh, m);
+    segments[i] = {s.a, mi};
+    segments.push_back({mi, s.b});
+    return mi;
+}
+
+int findEncroachedSegment(const Mesh& mesh, const std::vector<Segment>& segments, const Point& p) {
+    for (std::size_t i = 0; i < segments.size(); i++) {
+        const Segment& s = segments[i];
+        if (encroaches(mesh.meshPoint[s.a], mesh.meshPoint[s.b], p)) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+int findBadTriangle(const Mesh& mesh, const std::vector<bool>& inside, double maxRatio) {
+    for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
+        if (!inside[ti]) continue;
+        const Triangle& t = mesh.meshTriangle[ti];
+        const Point& a = mesh.meshPoint[t.v0];
+        const Point& b = mesh.meshPoint[t.v1];
+        const Point& c = mesh.meshPoint[t.v2];
+        if (radiusEdgeRatio(a, b, c) > maxRatio) {
+            return static_cast<int>(ti);
+        }
+    }
+    return -1;
+}
+
 std::vector<Segment> splitEncroachedSegments(Mesh& mesh, std::vector<Segment> segments) {
     bool changed = true;
 
@@ -20,13 +57,7 @@ std::vector<Segment> splitEncroachedSegments(Mesh& mesh, std::vector<Segment> se
         changed = false;
         for (std::size_t i = 0; i < segments.size(); i++) {
             if (isEncroached(mesh, segments[i])) {
-                Segment s = segments[i];
-                const Point& A = mesh.meshPoint[s.a];
-                const Point& B = mesh.meshPoint[s.b];
-                Point m = { (A.x + B.x) / 2, (A.y + B.y) / 2 };
-                int mi = insertPoint(mesh, m);
-                segments[i] = {s.a, mi};
-                segments.push_back({mi, s.b});
+                splitSegment(mesh, segments, i);
                 changed = true;
                 break;          
             }
