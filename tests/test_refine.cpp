@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -5,6 +6,7 @@
 #include "delaunay.hpp"
 #include "domain.hpp"
 #include "geometry.hpp"
+#include "quality.hpp"
 #include "refine.hpp"
 #include "topology.hpp"
 
@@ -203,6 +205,55 @@ int main() {
         checkBool("segment indices are valid", valid, true);
 
         std::cout << "  (segments: " << segsBefore << " -> " << segs.size() << ")\n";
+    }
+
+    std::cout << "--- refineMesh: plate with a circular hole ---\n";
+    {
+        const double sqrt2 = std::sqrt(2.0);
+        Domain d = makePlateWithHole(16);
+        std::vector<Segment> segs;
+        Mesh mesh = buildBase(d, segs);
+
+        std::vector<bool> before = insideTriangles(mesh, segs, d.holes);
+        int badBefore = findBadTriangle(mesh, before, sqrt2);
+        std::size_t pointsBefore = mesh.meshPoint.size();
+
+        refineMesh(mesh, segs, d.holes, sqrt2);
+
+        std::vector<bool> inside = insideTriangles(mesh, segs, d.holes);
+        checkBool("there were bad triangles before", badBefore >= 0, true);
+        checkBool("no bad triangle remains", findBadTriangle(mesh, inside, sqrt2) == -1, true);
+        checkBool("no segment is encroached", anyEncroached(mesh, segs), false);
+
+        bool allEdges = true;
+        for (const auto& s : segs) if (!isMeshEdge(mesh, s.a, s.b)) allEdges = false;
+        checkBool("every segment is still an edge of the mesh", allEdges, true);
+
+        double minAng = 180.0, area = 0;
+        std::size_t nIn = 0;
+        for (std::size_t ti = 0; ti < inside.size(); ++ti) {
+            if (!inside[ti]) continue;
+            ++nIn;
+            const Triangle& tr = mesh.meshTriangle[ti];
+            const Point& a = mesh.meshPoint[tr.v0];
+            const Point& b = mesh.meshPoint[tr.v1];
+            const Point& c = mesh.meshPoint[tr.v2];
+            minAng = std::min(minAng, minAngle(a, b, c) * 180.0 / M_PI);
+            area += std::fabs(orientation(a, b, c)) / 2;
+        }
+        double expected = 100.0 - 0.5 * 16 * 2 * 2 * std::sin(2 * M_PI / 16);
+        std::cout << "  (points " << pointsBefore << " -> " << mesh.meshPoint.size()
+                  << ", inside triangles " << nIn << ", min angle " << minAng
+                  << " deg, area " << area << ")\n";
+        checkBool("minimum angle of the inside triangles is at least 20 degrees", minAng >= 20.0, true);
+        checkBool("the area of the shape is unchanged", std::fabs(area - expected) < 1e-9, true);
+        checkBool("the mesh stayed reasonably small (< 3000 points)", mesh.meshPoint.size() < 3000, true);
+
+        // running it again must not change anything
+        std::size_t pointsAfter = mesh.meshPoint.size();
+        refineMesh(mesh, segs, d.holes, sqrt2);
+        checkBool("refining an already refined mesh adds no points",
+                  mesh.meshPoint.size() == pointsAfter, true);
     }
 
     std::cout << "\n" << (failures == 0 ? "ALL REFINE TESTS PASSED" : "SOME TESTS FAILED")

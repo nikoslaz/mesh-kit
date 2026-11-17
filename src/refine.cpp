@@ -2,7 +2,7 @@
 #include "delaunay.hpp"
 #include "geometry.hpp"
 #include "quality.hpp"
-#include "quality.hpp"
+#include "topology.hpp"
 
 static bool isEncroached(const Mesh& mesh, const Segment& s) {
     for (std::size_t i = 3; i < mesh.meshPoint.size(); i++) {
@@ -66,3 +66,30 @@ std::vector<Segment> splitEncroachedSegments(Mesh& mesh, std::vector<Segment> se
 
     return segments;
 }
+
+void refineMesh(Mesh& mesh, std::vector<Segment>& segments, const std::vector<Point>& holes, double maxRatio) {
+    segments = splitEncroachedSegments(mesh, segments);
+    std::vector<bool> inside;
+
+    for (int iter = 0; iter < 10000; iter++) {
+        inside = insideTriangles(mesh, segments, holes);
+        int bad = findBadTriangle(mesh, inside, maxRatio);
+        if (bad == -1) break;      // nothing left to fix; the for-limit is only a safety net
+
+        const Triangle& t = mesh.meshTriangle[bad];
+        const Point& a = mesh.meshPoint[t.v0];
+        const Point& b = mesh.meshPoint[t.v1];
+        const Point& c = mesh.meshPoint[t.v2];
+        Point m = circumcenter(a, b, c);
+        
+        int si = findEncroachedSegment(mesh, segments, m);
+        if (si != -1) {
+            splitSegment(mesh, segments, si);
+            segments = splitEncroachedSegments(mesh, segments);
+        }
+        else {
+            insertPoint(mesh, m);
+        }
+    }
+}
+
