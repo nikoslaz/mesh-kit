@@ -74,7 +74,7 @@ void refineMesh(Mesh& mesh, std::vector<Segment>& segments, const std::vector<Po
     for (int iter = 0; iter < 10000; iter++) {
         inside = insideTriangles(mesh, segments, holes);
         int bad = findBadTriangle(mesh, inside, maxRatio);
-        if (bad == -1) break;      // nothing left to fix; the for-limit is only a safety net
+        if (bad == -1) break;      
 
         const Triangle& t = mesh.meshTriangle[bad];
         const Point& a = mesh.meshPoint[t.v0];
