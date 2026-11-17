@@ -1,9 +1,19 @@
 # meshkit
 
-A small C++20 toolkit for 2D triangle meshes: Delaunay triangulation, mesh quality
-metrics, Laplacian smoothing, and pluggable mesh readers/writers (Gmsh in, VTK and
-Nastran out) selected from a config file. A Python script runs it in batch and
-reports mesh quality.
+A small C++20 toolkit for 2D triangle meshes: Delaunay triangulation, **quality mesh
+generation from a boundary (Ruppert's algorithm)**, mesh quality metrics, Laplacian
+smoothing, and pluggable mesh readers/writers (Gmsh in, VTK and Nastran out) selected from
+a config file. A Python script runs it in batch and reports mesh quality.
+
+| Boundary only (min angle 4.4°, 40 triangles) | After Ruppert refinement (min angle 24.6°, 172 triangles) |
+|---|---|
+| ![coarse plate mesh](docs/images/plate_coarse_screenshot.png) | ![refined plate mesh](docs/images/plate_screenshot.png) |
+
+*A 10×10 plate with a circular hole, meshed from its boundary alone
+(`meshkit_cli plate 1.2 32`). Coloured by each triangle's smallest angle, same colour scale
+in both pictures, viewed in ParaView.*
+
+## Smoothing and Delaunay
 
 | Before smoothing (min angle 0.28°) | After 10 Laplacian iterations (min angle 12.3°) |
 |---|---|
@@ -23,7 +33,10 @@ smallest angle (blue = poor, red = good), viewed in ParaView.*
   and random point sets. On a set of nearly collinear points, a plain floating-point
   orientation test gave a vertex-order-dependent sign in 13,968 of 65,536 cases (21%); the
   robust predicates gave 0 (see `tests/test_geometry.cpp`).
-- **Quality metrics**: per-triangle minimum angle.
+- **Quality mesh generation** (Ruppert's algorithm): give it a boundary (points, segments,
+  holes) and a limit on the radius-edge ratio, and it returns a mesh whose triangles all
+  respect the limit, with every boundary segment kept as mesh edges (see below).
+- **Quality metrics**: per-triangle minimum angle and radius-edge ratio.
 - **Laplacian smoothing**: interior vertices move to the average of their neighbours;
   boundary vertices stay fixed.
 - **Mesh I/O** behind abstract `MeshReader` / `MeshWriter` interfaces, created by
@@ -33,6 +46,65 @@ smallest angle (blue = poor, red = good), viewed in ParaView.*
   - Nastran bulk data writer (`GRID` / `CTRIA3`, free format)
 - **Config-driven CLI**: a `key = value` file chooses reader, writer, files and smoothing.
 - **Python batch script** that converts a folder of meshes and prints quality histograms.
+
+## Quality meshing (Ruppert's algorithm)
+
+`meshDomain(domain, maxRatio)` turns a boundary description into a mesh. A `Domain` is a
+list of points, a list of segments (the walls, as pairs of point indices) and one marker
+point inside each hole. The result has no triangle whose circumradius divided by its
+shortest edge exceeds `maxRatio`. A radius-edge ratio of √2 corresponds to a minimum angle
+of about 20.7°. Ruppert's termination proof needs a ratio of at least √2 and walls that do
+not meet at very small angles (the 90° corners of the plate are fine); with smaller ratios
+the program still often finishes, as in the table below, but without that guarantee, so
+refinement stops after at most 10,000 steps.
+
+How it works:
+
+1. Triangulate the boundary points with incremental Bowyer-Watson, inside a large
+   super-triangle that stays in the mesh until the end.
+2. **Segment splitting**: a segment is *encroached* if another vertex lies inside the circle
+   that has it as diameter. Encroached segments are split at their midpoint until none is
+   left, so every wall ends up as a union of mesh edges, with no constrained Delaunay
+   algorithm needed.
+3. **Interior detection**: a flood fill over triangle neighbours starts from the
+   super-triangle corners (outside) and from each hole marker, and is blocked by segments.
+   Triangles it does not reach are inside the shape.
+4. **Refinement**: while some interior triangle has a radius-edge ratio above the limit,
+   insert its circumcenter. If that point would encroach a segment, split the segment
+   instead.
+5. Keep only the interior triangles and renumber the points.
+
+Orientation and in-circle tests use Shewchuk's exact predicates, so nearly degenerate
+inputs do not break the triangulation.
+
+```bash
+./build/meshkit_cli plate              # 10x10 plate, 16-sided hole, ratio sqrt(2)
+./build/meshkit_cli plate 1.0          # stricter limit: finer mesh
+./build/meshkit_cli plate 1.2 32       # ratio 1.2, 32-sided hole (the pictures above)
+```
+
+It writes `output/plate_coarse.vtk` (boundary fixed, no quality refinement) and
+`output/plate.vtk` (refined), both with the minimum angle of each triangle as cell data.
+
+| hole sides | max ratio | triangles before → after | min angle before → after |
+|---|---|---|---|
+| 16 | √2 | 24 → 64 | 8.3° → 21.4° |
+| 16 | 1.0 | 24 → 90 | 8.3° → 32.2° |
+| 32 | 1.2 | 40 → 172 | 4.4° → 24.6° |
+
+From C++:
+
+```cpp
+#include "domain.hpp"
+#include "refine.hpp"
+
+Domain d = makePlateWithHole(32);        // or fill points / segments / holes yourself
+Mesh mesh = meshDomain(d, 1.2);
+```
+
+The tests check, among other things, that the area of the result equals the exact area of
+the shape, that every wall is a mesh edge, that no triangle exceeds the limit, and that the
+topology is consistent (Euler's formula V − E + F = 0 for a plate with one hole).
 
 ## Build and test
 
@@ -49,6 +121,7 @@ ctest --test-dir build --output-on-failure   # or: ./test.sh
 ```bash
 ./build/meshkit_cli tests/convert.cfg   # convert according to a config file
 ./build/meshkit_cli demo                # writes output/random60_before/after.vtk
+./build/meshkit_cli plate [ratio] [n]   # quality mesh of a plate with a hole, see above
 ```
 
 Config file (`tests/convert.cfg`):
@@ -96,10 +169,12 @@ It also prints a histogram of the minimum angles before and after smoothing for 
 ## Project layout
 
 ```
-include/        public headers (mesh, geometry, delaunay, quality, smoothing, mesh_io, vtk_writer)
-src/            library implementation (libmeshkit)
+include/        public headers (mesh, geometry, delaunay, domain, refine, topology, quality,
+                smoothing, mesh_io, vtk_writer, predicate)
+src/            library implementation (libmeshkit); predicate.c is Shewchuk's C code
 apps/main.cpp   meshkit_cli
-tests/          unit tests (geometry, Delaunay, I/O), sample config and meshes in tests/data/
+tests/          unit tests (geometry, Delaunay, domain, refinement, topology, I/O),
+                sample config and meshes in tests/data/
 scripts/        Python sample generator and batch quality report
 docs/images/    screenshots used in this README
 output/         generated files (VTK, Nastran, CSV); not committed
@@ -111,13 +186,18 @@ output/         generated files (VTK, Nastran, CSV); not committed
   three point indices.
 - File formats use 1-based ids; the reader maps Gmsh node ids to internal 0-based indices
   with a lookup table, so meshes with gaps in their numbering load correctly.
+- Refinement keeps the super-triangle in the mesh until the end, so point indices stay
+  stable while points are inserted; the interior is extracted once, at the end.
 - Adding a format means adding one `MeshReader`/`MeshWriter` subclass and one line in its
   factory; the CLI and the batch script pick it up through the config file.
 
 ## Roadmap
 
 - Multithreaded smoothing and quality evaluation, with benchmarks on large meshes
-- Faster triangulation (spatial search for the containing triangle instead of a scan)
+- Faster triangulation and refinement (triangle adjacency and point location instead of
+  scanning every triangle, and updating the interior incrementally instead of recomputing it)
+- A maximum triangle area, so the mesh can also be graded by size and not only by shape
+- Reading a domain (points, segments, holes) from a file instead of the built-in plate
 - More formats (Gmsh writer, Nastran reader) and quad elements
 
 ## Credits

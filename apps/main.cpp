@@ -1,7 +1,12 @@
 // meshkit_cli
 //   meshkit_cli <config.cfg>   read -> (smooth) -> write, as described by a key=value config file
 //   meshkit_cli demo           random 60-point example, writes before/after VTK files to output/
+//   meshkit_cli plate [ratio] [n]
+//                              10x10 plate with a circular hole (n boundary segments, default 16),
+//                              meshed with Ruppert refinement (max radius-edge ratio, default sqrt(2));
+//                              writes output/plate_coarse.vtk and output/plate.vtk
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -13,9 +18,12 @@
 #include <vector>
 
 #include "delaunay.hpp"
+#include "domain.hpp"
 #include "mesh_io.hpp"
 #include "quality.hpp"
+#include "refine.hpp"
 #include "smoothing.hpp"
+#include "topology.hpp"
 #include "vtk_writer.hpp"
 
 using Config = std::map<std::string, std::string>;
@@ -85,15 +93,59 @@ static void demo() {
     writeVTK(mesh, "output/random60_after.vtk", "min_angle", after);
 }
 
+// Meshes the plate-with-hole twice and writes both as VTK, coloured by minimum angle:
+//   plate_coarse.vtk  only the boundary is fixed (encroached segments split), no quality refinement
+//   plate.vtk         full Ruppert refinement up to the given radius-edge ratio
+static void plate(double ratio, int circleSegments) {
+    std::filesystem::create_directories("output");
+    Domain d = makePlateWithHole(circleSegments);
+
+    // coarse mesh: Delaunay of the domain points, then only fix the encroached boundary segments
+    Mesh base = makeSuperTriangle(d.points);
+    for (const auto& p : d.points) insertPoint(base, p);
+    std::vector<Segment> segs;
+    for (const auto& sg : d.segments) segs.push_back({sg.a + 3, sg.b + 3});
+    segs = splitEncroachedSegments(base, segs);
+    Mesh coarse = extractInside(base, insideTriangles(base, segs, d.holes));
+    std::vector<double> coarseAngles = minAngles(coarse);
+    writeVTK(coarse, "output/plate_coarse.vtk", "min_angle", coarseAngles);
+
+    // refined mesh
+    Mesh fine = meshDomain(d, ratio);
+    std::vector<double> fineAngles = minAngles(fine);
+    writeVTK(fine, "output/plate.vtk", "min_angle", fineAngles);
+
+    std::cout << "plate with " << circleSegments << "-segment hole, max radius-edge ratio " << ratio << "\n"
+              << "coarse:  " << coarse.meshPoint.size() << " points, " << coarse.meshTriangle.size()
+              << " triangles, min angle " << *std::min_element(coarseAngles.begin(), coarseAngles.end()) << "\n"
+              << "refined: " << fine.meshPoint.size() << " points, " << fine.meshTriangle.size()
+              << " triangles, min angle " << *std::min_element(fineAngles.begin(), fineAngles.end()) << "\n"
+              << "wrote output/plate_coarse.vtk and output/plate.vtk\n";
+}
+
 int main(int argc, char** argv) {
-    if (argc != 2) {
+    if (argc < 2) {
         std::cerr << "usage: meshkit_cli <config.cfg>\n"
-                  << "       meshkit_cli demo\n";
+                  << "       meshkit_cli demo\n"
+                  << "       meshkit_cli plate [max_ratio] [hole_segments]\n";
         return 1;
     }
     try {
         std::string arg = argv[1];
         if (arg == "demo") demo();
+        else if (arg == "plate") {
+            double ratio = std::sqrt(2.0);
+            int n = 16;
+            try {
+                if (argc > 2) ratio = std::stod(argv[2]);
+                if (argc > 3) n = std::stoi(argv[3]);
+            } catch (const std::exception&) {
+                throw std::runtime_error("usage: meshkit_cli plate [max_ratio] [hole_segments] (both numbers)");
+            }
+            if (ratio <= 0) throw std::runtime_error("max_ratio must be positive");
+            if (n < 3) throw std::runtime_error("hole_segments must be at least 3");
+            plate(ratio, n);
+        }
         else runConfig(arg);
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << "\n";
