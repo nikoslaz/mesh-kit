@@ -15,7 +15,7 @@ status=0
 # Shewchuk's predicates are C: compile once to an object file, then link it.
 $CC -w -c src/predicate.c -o "$BUILD_DIR/predicate.o" || exit 1
 
-for t in test_geometry test_delaunay test_io; do
+for t in test_geometry test_delaunay test_io test_domain; do
     echo "===== $t ====="
     if $CXX $FLAGS tests/$t.cpp $LIB_SRC "$BUILD_DIR/predicate.o" -o "$BUILD_DIR/$t"; then
         "$BUILD_DIR/$t" || status=1
