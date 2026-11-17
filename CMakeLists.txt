@@ -19,7 +19,9 @@ add_library(meshkit
     src/refine.cpp
     src/topology.cpp
 )
-set_source_files_properties(src/predicate.c PROPERTIES COMPILE_OPTIONS "-w")
+# Shewchuk's predicates need every floating-point operation rounded separately: no fused
+# multiply-add (-ffp-contract=off) and never -ffast-math. -w silences his old-style C.
+set_source_files_properties(src/predicate.c PROPERTIES COMPILE_OPTIONS "-w;-ffp-contract=off")
 target_include_directories(meshkit PUBLIC include)
 target_compile_options(meshkit PRIVATE -Wall -Wextra -Wpedantic)
 

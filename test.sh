@@ -13,7 +13,8 @@ mkdir -p "$BUILD_DIR"
 status=0
 
 # Shewchuk's predicates are C: compile once to an object file, then link it.
-$CC -w -c src/predicate.c -o "$BUILD_DIR/predicate.o" || exit 1
+# (-ffp-contract=off: the exact arithmetic breaks if the compiler fuses multiply-add)
+$CC -w -ffp-contract=off -c src/predicate.c -o "$BUILD_DIR/predicate.o" || exit 1
 
 for t in test_geometry test_delaunay test_io test_domain test_refine test_topology; do
     echo "===== $t ====="
