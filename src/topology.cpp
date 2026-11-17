@@ -122,3 +122,25 @@ std::vector<bool> insideTriangles(const Mesh& mesh, const std::vector<Segment>& 
     for (std::size_t t = 0; t < inside.size(); t++) inside[t] = !painted[t];
     return inside;
 }
+
+Mesh extractInside(const Mesh& mesh, const std::vector<bool>& inside) {
+    std::vector<int> newIndex(mesh.meshPoint.size(), -1);
+    Mesh result;
+
+    for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
+        if (!inside[ti]) {continue;}
+        Triangle tri = mesh.meshTriangle[ti];
+        int v[3] = {tri.v0, tri.v1, tri.v2};
+
+        for (int k = 0; k < 3; k++) {
+            if (newIndex[v[k]] == -1) {
+                newIndex[v[k]] = (int) result.meshPoint.size();
+                result.addPoint(mesh.meshPoint[v[k]]);
+            }
+            v[k] = newIndex[v[k]]; 
+        }
+        result.addTriangle({v[0], v[1], v[2]});
+    }
+
+    return result;
+}

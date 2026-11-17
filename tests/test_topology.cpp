@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <set>
@@ -6,6 +7,7 @@
 #include "delaunay.hpp"
 #include "domain.hpp"
 #include "geometry.hpp"
+#include "quality.hpp"
 #include "refine.hpp"
 #include "topology.hpp"
 
@@ -172,6 +174,108 @@ int main() {
         double expected = 100.0 - 0.5 * 16 * 2 * 2 * std::sin(2 * M_PI / 16);
         std::cout << "  (inside area " << area << ", expected " << expected << ")\n";
         checkBool("inside area = plate minus the hole polygon", std::fabs(area - expected) < 1e-9, true);
+    }
+
+    std::cout << "--- extractInside: small hand-made mesh ---\n";
+    {
+        // 6 points; triangle A uses 2,3,5 and B uses 3,5,4; triangle C (0,1,2) is not inside
+        Mesh m;
+        for (int i = 0; i < 6; ++i) m.addPoint({double(i), double(i * i)});
+        m.addTriangle({2, 3, 5});
+        m.addTriangle({3, 5, 4});
+        m.addTriangle({0, 1, 2});
+
+        Mesh r = extractInside(m, {true, true, false});
+        checkBool("2 triangles kept", r.meshTriangle.size() == 2, true);
+        checkBool("only the 4 used points are kept", r.meshPoint.size() == 4, true);
+        // points are numbered in order of first use: 2->0, 3->1, 5->2, 4->3
+        checkBool("triangle A becomes {0,1,2}",
+                  r.meshTriangle[0].v0 == 0 && r.meshTriangle[0].v1 == 1 && r.meshTriangle[0].v2 == 2, true);
+        checkBool("triangle B becomes {1,2,3}",
+                  r.meshTriangle[1].v0 == 1 && r.meshTriangle[1].v1 == 2 && r.meshTriangle[1].v2 == 3, true);
+        checkBool("new point 0 is old point 2",
+                  r.meshPoint[0].x == 2 && r.meshPoint[0].y == 4, true);
+        checkBool("new point 3 is old point 4",
+                  r.meshPoint[3].x == 4 && r.meshPoint[3].y == 16, true);
+        checkBool("the input mesh is not modified",
+                  m.meshPoint.size() == 6 && m.meshTriangle.size() == 3, true);
+
+        Mesh none = extractInside(m, {false, false, false});
+        checkBool("nothing inside gives an empty mesh",
+                  none.meshPoint.empty() && none.meshTriangle.empty(), true);
+
+        Mesh all = extractInside(m, {true, true, true});
+        checkBool("everything inside keeps 3 triangles and the 6 used points",
+                  all.meshTriangle.size() == 3 && all.meshPoint.size() == 6, true);
+    }
+
+    std::cout << "--- extractInside: refined plate with a circular hole ---\n";
+    {
+        const double sqrt2 = std::sqrt(2.0);
+        Domain d = makePlateWithHole(16);
+        Mesh mesh = makeSuperTriangle(d.points);
+        for (const auto& p : d.points) insertPoint(mesh, p);
+        std::vector<Segment> segs;
+        for (const auto& sg : d.segments) segs.push_back({sg.a + 3, sg.b + 3});
+        refineMesh(mesh, segs, d.holes, sqrt2);
+        std::vector<bool> inside = insideTriangles(mesh, segs, d.holes);
+
+        std::size_t nInside = 0;
+        for (bool b : inside) if (b) ++nInside;
+
+        Mesh r = extractInside(mesh, inside);
+        checkBool("one output triangle per inside triangle", r.meshTriangle.size() == nInside, true);
+        checkBool("fewer points than before (corners and unused points are gone)",
+                  r.meshPoint.size() < mesh.meshPoint.size(), true);
+
+        std::vector<int> used(r.meshPoint.size(), 0);
+        bool valid = true;
+        for (const auto& t : r.meshTriangle)
+            for (int v : {t.v0, t.v1, t.v2}) {
+                if (v < 0 || v >= static_cast<int>(r.meshPoint.size())) valid = false;
+                else ++used[v];
+            }
+        checkBool("all triangle indices are valid", valid, true);
+        bool allUsed = true;
+        for (int u : used) if (u == 0) allUsed = false;
+        checkBool("every point is used by at least one triangle", allUsed, true);
+
+        double area = 0, minAng = 180.0;
+        for (const auto& t : r.meshTriangle) {
+            const Point& a = r.meshPoint[t.v0];
+            const Point& b = r.meshPoint[t.v1];
+            const Point& c = r.meshPoint[t.v2];
+            area += std::fabs(orientation(a, b, c)) / 2;
+            minAng = std::min(minAng, minAngle(a, b, c) * 180.0 / M_PI);
+        }
+        double expected = 100.0 - 0.5 * 16 * 2 * 2 * std::sin(2 * M_PI / 16);
+        std::cout << "  (final mesh: " << r.meshPoint.size() << " points, "
+                  << r.meshTriangle.size() << " triangles, min angle " << minAng << " deg)\n";
+        checkBool("area equals plate minus hole polygon", std::fabs(area - expected) < 1e-9, true);
+        checkBool("minimum angle is at least 20 degrees", minAng >= 20.0, true);
+
+        bool inPlate = true, outOfHole = true;
+        for (const auto& p : r.meshPoint) {
+            if (p.x < -1e-12 || p.x > 10 + 1e-12 || p.y < -1e-12 || p.y > 10 + 1e-12) inPlate = false;
+            if (std::hypot(p.x - 5, p.y - 5) < 1.9) outOfHole = false;
+        }
+        checkBool("all points lie in the plate [0,10]x[0,10]", inPlate, true);
+        checkBool("no point lies inside the hole", outOfHole, true);
+
+        // topology of a plate with ONE hole: V - E + F = 0 (Euler characteristic of an annulus)
+        auto edges = buildEdgeMap(r);
+        bool edgesOk = true;
+        std::size_t borderEdges = 0;
+        for (const auto& e : edges) {
+            if (e.second.size() > 2) edgesOk = false;
+            if (e.second.size() == 1) ++borderEdges;
+        }
+        long V = static_cast<long>(r.meshPoint.size());
+        long E = static_cast<long>(edges.size());
+        long F = static_cast<long>(r.meshTriangle.size());
+        checkBool("every edge belongs to 1 or 2 triangles", edgesOk, true);
+        checkBool("Euler: V - E + F = 0 for a shape with one hole", V - E + F == 0, true);
+        checkBool("border edges exist (outer wall and hole wall)", borderEdges > 0, true);
     }
 
     std::cout << "\n" << (failures == 0 ? "ALL TOPOLOGY TESTS PASSED" : "SOME TESTS FAILED")
