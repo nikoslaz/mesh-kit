@@ -46,6 +46,17 @@ int main() {
     checkBool("cw d=(2,2) outside",        inCircumcircle({0,0}, {0,1}, {1,0}, {2, 2}),      false);
     checkBool("cw d=(1,1) on circle",      inCircumcircle({0,0}, {0,1}, {1,0}, {1, 1}),      false);
 
+    std::cout << "--- encroaches (segment (0,0)-(2,0): circle centre (1,0), radius 1) ---\n";
+    checkBool("inside, above the segment (1,0.5)",  encroaches({0,0}, {2,0}, {1, 0.5}),  true);
+    checkBool("inside, below the segment (1,-0.5)", encroaches({0,0}, {2,0}, {1, -0.5}), true);
+    checkBool("outside (1,1.5)",                    encroaches({0,0}, {2,0}, {1, 1.5}),  false);
+    checkBool("exactly on the circle (1,1)",        encroaches({0,0}, {2,0}, {1, 1}),    false);
+    checkBool("endpoint a is not encroaching",      encroaches({0,0}, {2,0}, {0, 0}),    false);
+    checkBool("endpoint b is not encroaching",      encroaches({0,0}, {2,0}, {2, 0}),    false);
+    checkBool("midpoint of the segment (1,0)",      encroaches({0,0}, {2,0}, {1, 0}),    true);
+    checkBool("far away (10,10)",                   encroaches({0,0}, {2,0}, {10, 10}),  false);
+    checkBool("order of a and b does not matter",   encroaches({2,0}, {0,0}, {1, 0.5}),  true);
+
     std::cout << "--- orientation, nearly collinear (robustness) ---\n";
     // p moves on a 256x256 grid of spacing 2^-53 around (0.5, 0.5); q and r lie on y = x.
     // The sign of orientation must not depend on which vertex the triangle starts from.

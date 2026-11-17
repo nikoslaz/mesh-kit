@@ -29,3 +29,7 @@ bool inCircumcircle(const Point& a, const Point& b, const Point& c, const Point&
 
     return (inc * o > 0);
 }
+
+bool encroaches(const Point& a, const Point& b, const Point& p) {
+    return ((a.x - p.x)*(b.x - p.x) + (a.y - p.y)*(b.y - p.y) < 0);
+}
