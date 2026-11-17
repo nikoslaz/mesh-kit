@@ -30,3 +30,15 @@ std::vector<double> minAngles(const Mesh& mesh) {
     }
     return result;
 }
+
+double radiusEdgeRatio(const Point& a, const Point& b, const Point& c) {
+    Point p = circumcenter(a, b, c);
+    double R = std::hypot(p.x - a.x, p.y - a.y);
+
+    double ab = std::hypot(b.x - a.x, b.y - a.y);
+    double bc = std::hypot(c.x - b.x, c.y - b.y);
+    double ca = std::hypot(a.x - c.x, a.y - c.y);
+    double shortest = std::min({ab, bc, ca});
+
+    return R / shortest;
+}

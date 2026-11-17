@@ -1,7 +1,9 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 
 #include "geometry.hpp"
+#include "quality.hpp"
 
 static int failures = 0;
 
@@ -45,6 +47,69 @@ int main() {
     checkBool("cw d=(-0.1,-0.1) outside",  inCircumcircle({0,0}, {0,1}, {1,0}, {-0.1, -0.1}), false);
     checkBool("cw d=(2,2) outside",        inCircumcircle({0,0}, {0,1}, {1,0}, {2, 2}),      false);
     checkBool("cw d=(1,1) on circle",      inCircumcircle({0,0}, {0,1}, {1,0}, {1, 1}),      false);
+
+    std::cout << "--- circumcenter ---\n";
+    {
+        auto checkPoint = [](const char* name, Point got, Point expected) {
+            bool ok = std::fabs(got.x - expected.x) < 1e-12 && std::fabs(got.y - expected.y) < 1e-12;
+            std::cout << (ok ? "PASS  " : "FAIL  ") << name
+                      << "  (got " << got.x << "," << got.y
+                      << ", expected " << expected.x << "," << expected.y << ")\n";
+            if (!ok) ++failures;
+        };
+        checkPoint("unit right triangle",        circumcenter({0,0}, {1,0}, {0,1}),  {0.5, 0.5});
+        checkPoint("bigger right triangle",      circumcenter({0,0}, {4,0}, {0,4}),  {2, 2});
+        checkPoint("vertex order b,c,a",         circumcenter({1,0}, {0,1}, {0,0}),  {0.5, 0.5});
+        checkPoint("vertex order c,b,a (clockwise)", circumcenter({0,1}, {1,0}, {0,0}), {0.5, 0.5});
+        checkPoint("centre at the origin",       circumcenter({-1,0}, {1,0}, {0,1}), {0, 0});
+        // obtuse triangle: the circumcenter lies outside the triangle (below it)
+        checkPoint("obtuse triangle, centre outside", circumcenter({0,0}, {4,0}, {2,0.5}), {2, -3.75});
+
+        // property: the centre is equally far from all three vertices
+        struct Tri { Point a, b, c; };
+        const Tri tris[] = {
+            {{0,0}, {1,0}, {0,1}},
+            {{0,0}, {4,0}, {2,0.5}},
+            {{-3,2}, {5,-1}, {1,7}},
+            {{100,100}, {101,100}, {100.5,100.9}},
+            {{0,0}, {10,0}, {5,1e-3}},
+        };
+        bool equidistant = true;
+        for (const auto& t : tris) {
+            Point o = circumcenter(t.a, t.b, t.c);
+            double ra = std::hypot(o.x - t.a.x, o.y - t.a.y);
+            double rb = std::hypot(o.x - t.b.x, o.y - t.b.y);
+            double rc = std::hypot(o.x - t.c.x, o.y - t.c.y);
+            double tol = 1e-9 * std::max({ra, rb, rc, 1.0});
+            if (std::fabs(ra - rb) > tol || std::fabs(ra - rc) > tol) equidistant = false;
+        }
+        checkBool("centre is equidistant from a, b, c (5 triangles)", equidistant, true);
+    }
+
+    std::cout << "--- radiusEdgeRatio ---\n";
+    {
+        const double sqrt3 = std::sqrt(3.0);
+        // equilateral triangle with side 2: R = 2/sqrt(3), shortest = 2  ->  1/sqrt(3)
+        checkNear("equilateral = 1/sqrt(3) (the best possible)",
+                  radiusEdgeRatio({0,0}, {2,0}, {1,sqrt3}), 1.0 / sqrt3);
+        // right isosceles: R = sqrt(2)/2, shortest = 1
+        checkNear("right isosceles = sqrt(2)/2",
+                  radiusEdgeRatio({0,0}, {1,0}, {0,1}), std::sqrt(2.0) / 2.0);
+        checkNear("same triangle, other vertex order",
+                  radiusEdgeRatio({0,1}, {0,0}, {1,0}), std::sqrt(2.0) / 2.0);
+        checkNear("scaling the triangle does not change the ratio",
+                  radiusEdgeRatio({0,0}, {100,0}, {0,100}), std::sqrt(2.0) / 2.0);
+        // 30-60-90 triangle (0,0),(2,0),(0,2*tan30)... use (0,0),(sqrt3,0),(0,1): R = 1, shortest = 1
+        checkNear("30-60-90 triangle = 1",
+                  radiusEdgeRatio({0,0}, {sqrt3,0}, {0,1}), 1.0);
+        // thin sliver (0,0),(10,0),(5,0.1): R = 125.05, shortest = 5.001  ->  ratio ~ 25
+        checkNear("thin sliver ratio ~ 25.005",
+                  std::round(radiusEdgeRatio({0,0}, {10,0}, {5,0.1}) * 1000.0) / 1000.0, 25.005);
+        checkBool("equilateral is below the Ruppert bound sqrt(2)",
+                  radiusEdgeRatio({0,0}, {2,0}, {1,sqrt3}) < std::sqrt(2.0), true);
+        checkBool("sliver is above the Ruppert bound sqrt(2)",
+                  radiusEdgeRatio({0,0}, {10,0}, {5,0.1}) > std::sqrt(2.0), true);
+    }
 
     std::cout << "--- encroaches (segment (0,0)-(2,0): circle centre (1,0), radius 1) ---\n";
     checkBool("inside, above the segment (1,0.5)",  encroaches({0,0}, {2,0}, {1, 0.5}),  true);

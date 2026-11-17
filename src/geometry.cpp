@@ -33,3 +33,20 @@ bool inCircumcircle(const Point& a, const Point& b, const Point& c, const Point&
 bool encroaches(const Point& a, const Point& b, const Point& p) {
     return ((a.x - p.x)*(b.x - p.x) + (a.y - p.y)*(b.y - p.y) < 0);
 }
+
+Point circumcenter(const Point& a, const Point& b, const Point& c) { 
+    double bx = b.x - a.x;
+    double by = b.y - a.y;
+    double cx = c.x - a.x;
+    double cy = c.y - a.y;
+
+    double d = 2 * (bx*cy - by*cx);
+
+    double b2 = bx*bx + by*by;       // squared length of b
+    double c2 = cx*cx + cy*cy;       // squared length of c
+
+    double ux = (cy*b2 - by*c2) / d;
+    double uy = (bx*c2 - cx*b2) / d;
+
+    return {a.x + ux, a.y + uy};
+}
