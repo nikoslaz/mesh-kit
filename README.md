@@ -1,5 +1,7 @@
 # meshkit
 
+[![CI](https://github.com/nikoslaz/mesh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/nikoslaz/mesh-kit/actions/workflows/ci.yml)
+
 A small C++20 toolkit for 2D triangle meshes: Delaunay triangulation, **quality mesh
 generation from a boundary (Ruppert's algorithm)**, mesh quality metrics, Laplacian
 smoothing, and pluggable mesh readers/writers (Gmsh in, VTK and Nastran out) selected from
@@ -204,3 +206,7 @@ output/         generated files (VTK, Nastran, CSV); not committed
 
 `src/predicate.c` is Jonathan Richard Shewchuk's robust predicates code (public domain),
 from <https://www.cs.cmu.edu/~quake/robust.html>. It is compiled as C and left unmodified.
+
+## License
+
+MIT, see `LICENSE`. `src/predicate.c` is in the public domain (see Credits).

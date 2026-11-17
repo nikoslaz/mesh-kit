@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
 #include "delaunay.hpp"
@@ -308,6 +309,38 @@ int main() {
         Mesh e = meshDomain(empty, sqrt2);
         checkBool("an empty domain gives an empty mesh",
                   e.meshPoint.empty() && e.meshTriangle.empty(), true);
+    }
+
+    std::cout << "--- meshDomain: invalid input is rejected ---\n";
+    {
+        auto throwsInvalid = [](const Domain& d, double ratio) {
+            try { meshDomain(d, ratio); }
+            catch (const std::invalid_argument&) { return true; }
+            catch (...) { return false; }
+            return false;
+        };
+        Domain ok;
+        ok.points = {{0, 0}, {4, 0}, {4, 4}, {0, 4}};
+        ok.segments = {{0, 1}, {1, 2}, {2, 3}, {3, 0}};
+
+        checkBool("a valid domain does not throw", throwsInvalid(ok, 1.5), false);
+        checkBool("ratio 0 is rejected",        throwsInvalid(ok, 0.0), true);
+        checkBool("negative ratio is rejected", throwsInvalid(ok, -1.0), true);
+        checkBool("NaN ratio is rejected",      throwsInvalid(ok, std::nan("")), true);
+        checkBool("infinite ratio is rejected", throwsInvalid(ok, INFINITY), true);
+
+        Domain tooBig = ok;   tooBig.segments.push_back({2, 4});
+        checkBool("segment index past the last point is rejected", throwsInvalid(tooBig, 1.5), true);
+        Domain negative = ok; negative.segments.push_back({-1, 2});
+        checkBool("negative segment index is rejected", throwsInvalid(negative, 1.5), true);
+        Domain loop = ok;     loop.segments.push_back({2, 2});
+        checkBool("segment from a point to itself is rejected", throwsInvalid(loop, 1.5), true);
+        Domain nanPoint = ok; nanPoint.points[1].x = std::nan("");
+        checkBool("NaN coordinate is rejected", throwsInvalid(nanPoint, 1.5), true);
+        Domain nanHole = ok;  nanHole.holes.push_back({std::nan(""), 0});
+        checkBool("NaN hole marker is rejected", throwsInvalid(nanHole, 1.5), true);
+        Domain empty;
+        checkBool("an empty domain is valid", throwsInvalid(empty, 1.5), false);
     }
 
     std::cout << "\n" << (failures == 0 ? "ALL REFINE TESTS PASSED" : "SOME TESTS FAILED")

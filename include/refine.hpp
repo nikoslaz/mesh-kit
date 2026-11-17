@@ -10,6 +10,9 @@ std::vector<Segment> splitEncroachedSegments(Mesh& mesh, std::vector<Segment> se
 int splitSegment(Mesh& mesh, std::vector<Segment>& segments, std::size_t i);
 int findEncroachedSegment(const Mesh& mesh, const std::vector<Segment>& segments, const Point& p);
 void refineMesh(Mesh& mesh, std::vector<Segment>& segments,const std::vector<Point>& holes, double maxRatio);
+// Quality mesh of a domain. Throws std::invalid_argument for invalid input: non-positive or
+// non-finite maxRatio, non-finite coordinates, or a segment that refers to a missing point
+// or has the same point at both ends.
 Mesh meshDomain(const Domain& d, double maxRatio);
 
 #endif

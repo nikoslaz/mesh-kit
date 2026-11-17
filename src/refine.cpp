@@ -1,4 +1,7 @@
 #include "refine.hpp"
+#include <cmath>
+#include <stdexcept>
+#include <string>
 #include "delaunay.hpp"
 #include "geometry.hpp"
 #include "quality.hpp"
@@ -94,6 +97,25 @@ void refineMesh(Mesh& mesh, std::vector<Segment>& segments, const std::vector<Po
 }
 
 Mesh meshDomain(const Domain& d, double maxRatio) {
+    if (!(maxRatio > 0) || !std::isfinite(maxRatio))
+        throw std::invalid_argument("meshDomain: maxRatio must be a positive number");
+    for (std::size_t i = 0; i < d.points.size(); i++) {
+        if (!std::isfinite(d.points[i].x) || !std::isfinite(d.points[i].y))
+            throw std::invalid_argument("meshDomain: point " + std::to_string(i) + " has a non-finite coordinate");
+    }
+    const int n = static_cast<int>(d.points.size());
+    for (std::size_t i = 0; i < d.segments.size(); i++) {
+        const Segment& sg = d.segments[i];
+        if (sg.a < 0 || sg.a >= n || sg.b < 0 || sg.b >= n)
+            throw std::invalid_argument("meshDomain: segment " + std::to_string(i) + " refers to a point that does not exist");
+        if (sg.a == sg.b)
+            throw std::invalid_argument("meshDomain: segment " + std::to_string(i) + " has the same point at both ends");
+    }
+    for (std::size_t i = 0; i < d.holes.size(); i++) {
+        if (!std::isfinite(d.holes[i].x) || !std::isfinite(d.holes[i].y))
+            throw std::invalid_argument("meshDomain: hole " + std::to_string(i) + " has a non-finite coordinate");
+    }
+
     Mesh mesh = makeSuperTriangle(d.points);
 
     for (const auto& p : d.points) {
