@@ -18,6 +18,7 @@ add_library(meshkit
     src/domain.cpp
     src/refine.cpp
     src/topology.cpp
+    src/delaunay3d.cpp
 )
 # Shewchuk's predicates need every floating-point operation rounded separately: no fused
 # multiply-add (-ffp-contract=off) and never -ffast-math. -w silences his old-style C.

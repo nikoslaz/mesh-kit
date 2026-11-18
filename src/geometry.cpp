@@ -50,3 +50,29 @@ Point circumcenter(const Point& a, const Point& b, const Point& c) {
 
     return {a.x + ux, a.y + uy};
 }
+
+double orientation(const Point3& a, const Point3& b, const Point3& c, const Point3& d) {
+    init(); 
+
+    double pa[3] = {a.x, a.y, a.z};
+    double pb[3] = {b.x, b.y, b.z};
+    double pc[3] = {c.x, c.y, c.z};
+    double pd[3] = {d.x, d.y, d.z};
+
+    return orient3d(pa, pb, pc, pd);
+}
+
+bool inCircumcircle(const Point3& a, const Point3& b, const Point3& c, const Point3& d, const Point3& e) {
+    init(); 
+
+    double pa[3] = {a.x, a.y, a.z};
+    double pb[3] = {b.x, b.y, b.z};
+    double pc[3] = {c.x, c.y, c.z};
+    double pd[3] = {d.x, d.y, d.z};
+    double pe[3] = {e.x, e.y, e.z};      
+
+    double inc = insphere(pa, pb, pc, pd, pe);
+    double o = orientation(a, b, c, d);
+
+    return (inc * o > 0);
+}

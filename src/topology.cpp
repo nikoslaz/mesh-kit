@@ -6,7 +6,6 @@
 #include <utility>
 #include <random>
 
-
 std::map<std::pair<int,int>, std::vector<int>> buildEdgeMap(const Mesh& mesh) {
     std::map<std::pair<int,int>, std::vector<int>> edgeMap;
 
@@ -28,6 +27,39 @@ std::map<std::pair<int,int>, std::vector<int>> buildEdgeMap(const Mesh& mesh) {
 
     return edgeMap;
 }
+
+std::map<std::array<int,3>, std::vector<int>> buildFaceMap(const TetMesh& mesh) {
+    std::map<std::array<int,3>, std::vector<int>> faceMap;
+
+    for (std::size_t i = 0; i < mesh.tets.size(); i++) {
+        const Tet& tet = mesh.tets[i];
+        std::array<int,3> key;
+        // face 1: between v1 and v2 and v3
+        key = { tet.v1, tet.v2, tet.v3 };
+        std::sort(key.begin(), key.end());
+        faceMap[key].push_back(static_cast<int>(i));
+
+        // face 2: between v2 and v3 and v0
+        key = { tet.v2, tet.v3, tet.v0 };
+        std::sort(key.begin(), key.end());
+        faceMap[key].push_back(static_cast<int>(i));
+
+        // face 3: between v3 and v0 and v1
+        key = { tet.v3, tet.v0, tet.v1 };
+        std::sort(key.begin(), key.end());
+        faceMap[key].push_back(static_cast<int>(i));
+
+        // face 4: between v0 and v1 and v2
+        key = { tet.v0, tet.v1, tet.v2 };
+        std::sort(key.begin(), key.end());
+        faceMap[key].push_back(static_cast<int>(i));
+    }
+
+    return faceMap;    
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 
 int findTriangleContaining(const Mesh& mesh, const Point& p) {
     for (std::size_t ti = 0; ti < mesh.meshTriangle.size(); ti++) {
@@ -148,6 +180,8 @@ Mesh extractInside(const Mesh& mesh, const std::vector<bool>& inside) {
     return result;
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 void setNeighbour(Triangle& tri, int a, int b, int other) {
     if (tri.v0 != a && tri.v0 != b) {
         tri.n0 = other;
@@ -159,6 +193,24 @@ void setNeighbour(Triangle& tri, int a, int b, int other) {
         tri.n2 = other;
     }
 }
+
+void setNeighbour(Tet& tet, int a, int b, int c,int other) {
+    if (tet.v0 != a && tet.v0 != b && tet.v0 != c) {
+        tet.n0 = other;
+    }
+    else if (tet.v1 != a && tet.v1 != b && tet.v1 != c) {
+        tet.n1 = other;
+    }
+    else if (tet.v2 != a && tet.v2 != b && tet.v2 != c) {
+        tet.n2 = other;
+    }
+    else if (tet.v3 != a && tet.v3 != b && tet.v3 != c) {
+        tet.n3 = other;
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 
 void buildNeighbours(Mesh& mesh) {
     std::map<std::pair<int,int>, std::vector<int>> edgeMap = buildEdgeMap(mesh);
@@ -181,8 +233,32 @@ void buildNeighbours(Mesh& mesh) {
     }
 }
 
-int walkToTriangle(const Mesh& mesh, int start, const Point& p) {
+void buildNeighbours(TetMesh& mesh) {
+    std::map<std::array<int,3>, std::vector<int>> faceMap = buildFaceMap(mesh);
 
+    for (auto& t : mesh.tets) {
+        t.n0 = -1;
+        t.n1 = -1;
+        t.n2 = -1;
+        t.n3 = -1;
+    }
+
+    for (const auto& e : faceMap) {
+        if (e.second.size() != 2) continue;
+        Tet& t = mesh.tets[e.second[0]];
+        Tet& k = mesh.tets[e.second[1]];
+        int a = e.first[0];
+        int b = e.first[1];
+        int c = e.first[2];
+
+        setNeighbour(t, a, b, c, e.second[1]);
+        setNeighbour(k, a, b, c, e.second[0]);
+    }
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+int walkToTriangle(const Mesh& mesh, int start, const Point& p) {
     int t = start;
     int limit = static_cast<int>(mesh.meshTriangle.size()) + 10;
     for (int steps = 0; steps < limit; steps++) {
@@ -205,6 +281,31 @@ int walkToTriangle(const Mesh& mesh, int start, const Point& p) {
         else {
             return t;
         }
+
+        if (next == -1) return -1;
+        t = next;
+    }
+
+    return -1;
+}
+
+int walkToTet(const TetMesh& mesh, int start, const Point3& p) {
+    int t = start;
+    int limit = static_cast<int>(mesh.tets.size()) + 10;
+    for (int steps = 0; steps < limit; steps++) {
+        const Tet& tet = mesh.tets[t];
+
+        Point3 a = mesh.points[tet.v0];
+        Point3 b = mesh.points[tet.v1];
+        Point3 c = mesh.points[tet.v2];
+        Point3 d = mesh.points[tet.v3];
+
+        int next;
+        if      (orientation(p, b, c, d) < 0) next = tet.n0;   // beyond the face opposite a
+        else if (orientation(a, p, c, d) < 0) next = tet.n1;   // beyond the face opposite b
+        else if (orientation(a, b, p, d) < 0) next = tet.n2;   // beyond the face opposite c
+        else if (orientation(a, b, c, p) < 0) next = tet.n3;   // beyond the face opposite d
+        else return t;                                         // inside (or on a face)
 
         if (next == -1) return -1;
         t = next;
