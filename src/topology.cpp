@@ -1,8 +1,11 @@
 #include "topology.hpp"
 #include "geometry.hpp"
+#include "delaunay.hpp"
 #include <algorithm>
 #include <set>
 #include <utility>
+#include <random>
+
 
 std::map<std::pair<int,int>, std::vector<int>> buildEdgeMap(const Mesh& mesh) {
     std::map<std::pair<int,int>, std::vector<int>> edgeMap;
@@ -143,4 +146,69 @@ Mesh extractInside(const Mesh& mesh, const std::vector<bool>& inside) {
     }
 
     return result;
+}
+
+static void setNeighbour(Triangle& tri, int a, int b, int other) {
+    if (tri.v0 != a && tri.v0 != b) {
+        tri.n0 = other;
+    }
+    else if (tri.v1 != a && tri.v1 != b) {
+        tri.n1 = other;
+    }
+    else if (tri.v2 != a && tri.v2 != b) {
+        tri.n2 = other;
+    }
+}
+
+void buildNeighbours(Mesh& mesh) {
+    std::map<std::pair<int,int>, std::vector<int>> edgeMap = buildEdgeMap(mesh);
+
+    for (auto& t : mesh.meshTriangle) {
+        t.n0 = -1;
+        t.n1 = -1;
+        t.n2 = -1;
+    }
+
+    for (const auto& e : edgeMap) {
+        if (e.second.size() != 2) continue;
+        Triangle& t = mesh.meshTriangle[e.second[0]];
+        Triangle& k = mesh.meshTriangle[e.second[1]];
+        int a = e.first.first;
+        int b = e.first.second;
+
+        setNeighbour(t, a, b, e.second[1]);
+        setNeighbour(k, a, b, e.second[0]);
+    }
+}
+
+int walkToTriangle(const Mesh& mesh, int start, const Point& p) {
+
+    int t = start;
+    int limit = static_cast<int>(mesh.meshTriangle.size()) + 10;
+    for (int steps = 0; steps < limit; steps++) {
+        const Triangle& tri = mesh.meshTriangle[t];
+
+        Point a = mesh.meshPoint[tri.v0];
+        Point b = mesh.meshPoint[tri.v1];
+        Point c = mesh.meshPoint[tri.v2];
+
+        int next;
+        if (orientation(b, c, p) < 0) {
+            next = tri.n0;
+        }
+        else if (orientation(c, a, p) < 0) {
+            next = tri.n1;
+        }
+        else if (orientation(a, b, p) < 0) {
+            next = tri.n2;
+        }
+        else {
+            return t;
+        }
+
+        if (next == -1) return -1;
+        t = next;
+    }
+
+    return -1;
 }

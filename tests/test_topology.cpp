@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <iterator>
+#include <random>
 #include <set>
 #include <vector>
 
@@ -276,6 +278,154 @@ int main() {
         checkBool("every edge belongs to 1 or 2 triangles", edgesOk, true);
         checkBool("Euler: V - E + F = 0 for a shape with one hole", V - E + F == 0, true);
         checkBool("border edges exist (outer wall and hole wall)", borderEdges > 0, true);
+    }
+
+    std::cout << "--- buildNeighbours: unit square (2 triangles) ---\n";
+    {
+        Mesh mesh = delaunay({{0,0}, {1,0}, {1,1}, {0,1}});
+        buildNeighbours(mesh);
+        int links = 0;
+        for (const auto& t : mesh.meshTriangle)
+            for (int n : {t.n0, t.n1, t.n2}) if (n != -1) ++links;
+        checkBool("2 triangles", mesh.meshTriangle.size() == 2, true);
+        checkBool("exactly 2 neighbour links (one shared diagonal)", links == 2, true);
+    }
+
+    std::cout << "--- buildNeighbours: general properties on a bigger mesh ---\n";
+    {
+        std::vector<Point> pts;
+        for (int i = 0; i < 5; ++i)
+            for (int j = 0; j < 5; ++j)
+                pts.push_back({i + 0.01 * j * i, j + 0.013 * i});
+        Mesh mesh = delaunay(pts);
+        buildNeighbours(mesh);
+        const int T = static_cast<int>(mesh.meshTriangle.size());
+
+        auto vertsOf = [&](int t) {
+            const Triangle& tr = mesh.meshTriangle[t];
+            return std::set<int>{tr.v0, tr.v1, tr.v2};
+        };
+        auto slot = [&](int t, int i) {
+            const Triangle& tr = mesh.meshTriangle[t];
+            return i == 0 ? tr.n0 : (i == 1 ? tr.n1 : tr.n2);
+        };
+        auto vert = [&](int t, int i) {
+            const Triangle& tr = mesh.meshTriangle[t];
+            return i == 0 ? tr.v0 : (i == 1 ? tr.v1 : tr.v2);
+        };
+
+        bool inRange = true, symmetric = true, twoShared = true, oppositeOk = true;
+        std::size_t links = 0;
+        for (int t = 0; t < T; ++t) {
+            for (int i = 0; i < 3; ++i) {
+                int k = slot(t, i);
+                if (k == -1) continue;
+                ++links;
+                if (k < 0 || k >= T || k == t) { inRange = false; continue; }
+
+                bool back = (slot(k, 0) == t || slot(k, 1) == t || slot(k, 2) == t);
+                if (!back) symmetric = false;
+
+                std::set<int> a = vertsOf(t), b = vertsOf(k), common;
+                std::set_intersection(a.begin(), a.end(), b.begin(), b.end(),
+                                      std::inserter(common, common.begin()));
+                if (common.size() != 2) twoShared = false;
+                // neighbour i is across from vertex i: that vertex is not shared
+                if (common.count(vert(t, i))) oppositeOk = false;
+            }
+        }
+        // each interior edge gives 2 links, each border edge none
+        auto edges = buildEdgeMap(mesh);
+        std::size_t interior = 0;
+        for (const auto& e : edges) if (e.second.size() == 2) ++interior;
+
+        checkBool("neighbour indices are valid and never the triangle itself", inRange, true);
+        checkBool("symmetric: if t lists k, then k lists t", symmetric, true);
+        checkBool("neighbours share exactly 2 vertices", twoShared, true);
+        checkBool("neighbour i is across from vertex i", oppositeOk, true);
+        checkBool("number of links = 2 x interior edges", links == 2 * interior, true);
+
+        buildNeighbours(mesh);   // calling it twice must give the same result
+        std::size_t links2 = 0;
+        for (int t = 0; t < T; ++t) for (int i = 0; i < 3; ++i) if (slot(t, i) != -1) ++links2;
+        checkBool("calling buildNeighbours twice changes nothing", links2 == links, true);
+    }
+
+    std::cout << "--- delaunay: every triangle is counter-clockwise ---\n";
+    {
+        std::mt19937 rng(7);
+        std::uniform_real_distribution<double> U(0.0, 1.0);
+        std::vector<Point> pts;
+        for (int i = 0; i < 500; ++i) pts.push_back({U(rng), U(rng)});
+        Mesh mesh = delaunay(pts);
+        bool allCcw = true;
+        for (const auto& t : mesh.meshTriangle)
+            if (orientation(mesh.meshPoint[t.v0], mesh.meshPoint[t.v1], mesh.meshPoint[t.v2]) <= 0)
+                allCcw = false;
+        checkBool("all triangles have positive orientation", allCcw, true);
+    }
+
+    std::cout << "--- walkToTriangle: random points ---\n";
+    {
+        std::mt19937 rng(42);                                // fixed seed: failures are reproducible
+        std::uniform_real_distribution<double> U(0.0, 1.0);
+        std::vector<Point> pts;
+        for (int i = 0; i < 200; ++i) pts.push_back({U(rng), U(rng)});
+        Mesh mesh = delaunay(pts);
+        buildNeighbours(mesh);
+
+        auto contains = [&](int t, const Point& q) {
+            const Triangle& tr = mesh.meshTriangle[t];
+            const Point& a = mesh.meshPoint[tr.v0];
+            const Point& b = mesh.meshPoint[tr.v1];
+            const Point& c = mesh.meshPoint[tr.v2];
+            return orientation(a, b, q) >= 0 && orientation(b, c, q) >= 0 && orientation(c, a, q) >= 0;
+        };
+
+        // Random points can fall just outside the mesh (the hull of 200 random points cuts the
+        // corners of the square). So the rule is: the walk finds a triangle exactly when the
+        // slow search does, and that triangle contains the point.
+        std::uniform_real_distribution<double> Q(0.1, 0.9);
+        bool agree = true, inside = true;
+        int outsideHull = 0;
+        for (int i = 0; i < 1000; ++i) {
+            Point q{Q(rng), Q(rng)};
+            int t = walkToTriangle(mesh, 0, q);
+            int s = findTriangleContaining(mesh, q);
+            if ((t == -1) != (s == -1)) agree = false;
+            if (s == -1) ++outsideHull;
+            if (t != -1 && !contains(t, q)) inside = false;
+        }
+        std::cout << "  (" << outsideHull << " of 1000 query points fell outside the mesh)\n";
+        checkBool("walk finds a triangle exactly when the slow search does", agree, true);
+        checkBool("the triangle it finds contains the point", inside, true);
+
+        // exact ties: every vertex, and the midpoint of every edge
+        bool tiesOk = true;
+        for (const auto& tr : mesh.meshTriangle) {
+            const Point& a = mesh.meshPoint[tr.v0];
+            const Point& b = mesh.meshPoint[tr.v1];
+            Point mid{(a.x + b.x) / 2, (a.y + b.y) / 2};
+            for (const Point& q : {a, mid}) {
+                int t = walkToTriangle(mesh, 0, q);
+                int s = findTriangleContaining(mesh, q);
+                if ((t == -1) != (s == -1)) tiesOk = false;
+                if (t != -1 && !contains(t, q)) tiesOk = false;
+            }
+        }
+        checkBool("vertices and edge midpoints: same answer as the slow search", tiesOk, true);
+
+        // the start triangle should not matter
+        bool startOk = true;
+        Point q{0.5, 0.5};
+        int T = static_cast<int>(mesh.meshTriangle.size());
+        for (int s = 0; s < T; s += 7) {
+            int t = walkToTriangle(mesh, s, q);
+            if (t == -1 || !contains(t, q)) startOk = false;
+        }
+        checkBool("works from many different start triangles", startOk, true);
+
+        checkBool("a point outside the mesh returns -1", walkToTriangle(mesh, 0, {5, 5}) == -1, true);
     }
 
     std::cout << "\n" << (failures == 0 ? "ALL TOPOLOGY TESTS PASSED" : "SOME TESTS FAILED")

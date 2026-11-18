@@ -13,6 +13,9 @@ struct Triangle {
     int v0;
     int v1;
     int v2;
+    int n0 = -1;
+    int n1 = -1;
+    int n2 = -1;
 };
 
 class Mesh {

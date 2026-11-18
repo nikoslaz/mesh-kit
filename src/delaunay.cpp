@@ -86,6 +86,13 @@ int insertPoint(Mesh& mesh, Point p) {
     for (const auto& entry : edgeCount) {
             if (entry.second == 1) {
                 Triangle newTriang = {static_cast<int>(idx) ,entry.first.first, entry.first.second};
+                // the edge key is sorted (min, max), so the winding is arbitrary:
+                // swap two vertices to make every triangle counter-clockwise
+                if (orientation(mesh.meshPoint[newTriang.v0],
+                                mesh.meshPoint[newTriang.v1],
+                                mesh.meshPoint[newTriang.v2]) < 0) {
+                    std::swap(newTriang.v1, newTriang.v2);
+                }
                 keep.push_back(newTriang);
             }
 
