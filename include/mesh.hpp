@@ -22,6 +22,8 @@ class Mesh {
 public:
     std::vector<Point> meshPoint;
     std::vector<Triangle> meshTriangle;
+    // Hint for point location: a triangle near the last insertion. The walk starts here.
+    int lastTriangle = 0;
 
     std::size_t addPoint(Point point) {
         meshPoint.push_back(point);

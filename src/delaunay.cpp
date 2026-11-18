@@ -119,7 +119,9 @@ static std::vector<CavityEdge> cavityBoundary(const Mesh& mesh, const std::vecto
 //      reusing the cavity's slots so no other triangle index changes
 // Requires valid neighbours on entry and keeps them valid. All triangles are CCW.
 int insertPoint(Mesh& mesh, Point p) {
-    int tIdx = walkToTriangle(mesh, 0, p);
+    int start = mesh.lastTriangle;
+    if (start < 0 || start >= static_cast<int>(mesh.meshTriangle.size())) start = 0;
+    int tIdx = walkToTriangle(mesh, start, p);
     if (tIdx == -1) {
         std::cerr << "insertPoint: walk did not find a triangle for (" << p.x << ", " << p.y << ")\n";
         std::abort();
@@ -170,6 +172,7 @@ int insertPoint(Mesh& mesh, Point p) {
         setNeighbour(mesh.meshTriangle[cavEdge[i].outside], cavEdge[i].a, cavEdge[i].b, slot[i]);
     }
 
+    mesh.lastTriangle = slot[0];   // a triangle touching p: a good start for the next walk
     return idx;
 }
 
@@ -190,6 +193,7 @@ void removeSuperTriangle(Mesh& mesh) {
 
     mesh.meshPoint.erase(mesh.meshPoint.begin(), mesh.meshPoint.begin() + 3);
     mesh.meshTriangle = result;
+    mesh.lastTriangle = 0;   // the triangles were renumbered
     buildNeighbours(mesh);   // triangle indices changed, so the old neighbours are invalid
 }
 
