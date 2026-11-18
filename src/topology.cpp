@@ -148,7 +148,7 @@ Mesh extractInside(const Mesh& mesh, const std::vector<bool>& inside) {
     return result;
 }
 
-static void setNeighbour(Triangle& tri, int a, int b, int other) {
+void setNeighbour(Triangle& tri, int a, int b, int other) {
     if (tri.v0 != a && tri.v0 != b) {
         tri.n0 = other;
     }

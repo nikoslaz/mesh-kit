@@ -13,5 +13,7 @@ std::vector<bool> insideTriangles(const Mesh& mesh, const std::vector<Segment>& 
 Mesh extractInside(const Mesh& mesh, const std::vector<bool>& inside);
 void buildNeighbours(Mesh& mesh);
 int walkToTriangle(const Mesh& mesh, int start, const Point& p);
+// Set the neighbour slot of tri that faces edge (a, b) to `other`.
+void setNeighbour(Triangle& tri, int a, int b, int other);
 
 #endif
