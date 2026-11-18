@@ -73,7 +73,9 @@ How it works:
    Triangles it does not reach are inside the shape.
 4. **Refinement**: while some interior triangle has a radius-edge ratio above the limit,
    insert its circumcenter. If that point would encroach a segment, split the segment
-   instead.
+   instead. Nothing is rescanned: only new triangles can be bad, so they go on a work list;
+   a new triangle takes the inside/outside flag of the triangle it replaced; and a segment
+   is checked for encroachment only against the two vertices opposite it.
 5. Keep only the interior triangles and renumber the points.
 
 Orientation and in-circle tests use Shewchuk's exact predicates, so nearly degenerate
@@ -90,9 +92,9 @@ It writes `output/plate_coarse.vtk` (boundary fixed, no quality refinement) and
 
 | hole sides | max ratio | triangles before → after | min angle before → after |
 |---|---|---|---|
-| 16 | √2 | 24 → 64 | 8.3° → 21.4° |
-| 16 | 1.0 | 24 → 90 | 8.3° → 32.2° |
-| 32 | 1.2 | 40 → 172 | 4.4° → 24.6° |
+| 16 | √2 | 24 → 70 | 8.3° → 24.0° |
+| 16 | 1.0 | 24 → 95 | 8.3° → 31.0° |
+| 32 | 1.2 | 40 → 196 | 4.4° → 24.8° |
 
 From C++:
 
@@ -199,8 +201,6 @@ output/         generated files (VTK, Nastran, CSV); not committed
 ## Roadmap
 
 - Multithreaded smoothing and quality evaluation, with benchmarks on large meshes
-- Faster refinement (updating the interior and the list of bad triangles incrementally instead
-  of recomputing them on every iteration). Triangulation itself is done: see `docs/benchmarks.md`
 - A maximum triangle area, so the mesh can also be graded by size and not only by shape
 - Reading a domain (points, segments, holes) from a file instead of the built-in plate
 - More formats (Gmsh writer, Nastran reader) and quad elements

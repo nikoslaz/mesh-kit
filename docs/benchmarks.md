@@ -50,5 +50,37 @@ Delaunay triangulation of random points in the unit square
 The old time grows by about 4x when the points double. The new time grows by about 2.5x, and
 the output is the same triangulation (checked on random sets and exact grids).
 
-`meshDomain` is not much faster yet: its time is now spent in the refinement loop, which
-recomputes the interior and scans all triangles and points on every iteration.
+## After: spatial insertion order and incremental refinement
+
+Two more changes:
+
+- The walk now starts from the last inserted triangle, and `delaunay()` inserts the points in
+  a "snake" order over rows of cells (then renumbers them, so the output keeps the input
+  numbering). Each walk is now only a few steps long.
+- `refineMesh` no longer rescans the mesh on every step. New triangles go on a work list of
+  possibly bad triangles, inherit the inside/outside flag of the triangle they replaced, and
+  segments are checked for encroachment only against the vertices opposite them. Each of
+  these shortcuts was checked against the full recomputation at every step while developing.
+
+Same machine as the table above (Linux sandbox, `-O2`):
+
+```
+Delaunay, random points           before (neighbours only)   now
+    16000                                   0.061 s        0.032 s
+    64000                                   0.419 s        0.148 s
+   256000                                   3.602 s        0.683 s
+
+meshDomain, ratio 1.2, 10x10 plate with an n-sided hole
+  hole sides         before            now     points now
+          64       0.0063 s       0.0008 s           196
+         128       0.0229 s       0.0013 s           339
+         256       0.0853 s       0.0028 s           684
+         512       0.3699 s       0.0060 s          1331
+        1024       1.6932 s       0.0115 s          2549
+        2048       7.9142 s       0.0262 s          5053
+```
+
+At 2048 sides refinement is about 300 times faster, and doubling the hole now roughly doubles
+the time instead of multiplying it by 4.5. The meshes are not identical to before: bad
+triangles are fixed in a different order, so the point count differs by a few percent. They
+meet the same guarantees (every triangle within the ratio limit, the same area and topology).

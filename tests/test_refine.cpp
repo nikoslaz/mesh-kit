@@ -283,8 +283,19 @@ int main() {
         double expected = 100.0 - 0.5 * 16 * 2 * 2 * std::sin(2 * M_PI / 16);
         std::cout << "  (" << r.meshPoint.size() << " points, " << r.meshTriangle.size()
                   << " triangles, min angle " << minAng << " deg)\n";
-        checkBool("48 points",     r.meshPoint.size() == 48, true);
-        checkBool("64 triangles",  r.meshTriangle.size() == 64, true);
+        // The exact point count depends on the order bad triangles are fixed in, so check the
+        // topology instead: a plate with one hole has V - E + F = 0, and all 16 hole corners
+        // and 4 plate corners must still be there.
+        auto edges = buildEdgeMap(r);
+        long V = static_cast<long>(r.meshPoint.size());
+        long E = static_cast<long>(edges.size());
+        long F = static_cast<long>(r.meshTriangle.size());
+        checkBool("Euler: V - E + F = 0 (one hole)", V - E + F == 0, true);
+        int corners = 0;
+        for (const auto& q : d.points)
+            for (const auto& p : r.meshPoint)
+                if (p.x == q.x && p.y == q.y) { ++corners; break; }
+        checkBool("all 20 input points are in the mesh", corners == 20, true);
         checkBool("area equals plate minus hole", std::fabs(area - expected) < 1e-9, true);
         checkBool("every triangle has ratio <= sqrt(2)", maxRatio <= sqrt2, true);
         checkBool("min angle >= 20 degrees", minAng >= 20.0, true);

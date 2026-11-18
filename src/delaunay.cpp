@@ -1,6 +1,7 @@
 #include "delaunay.hpp"
 #include "topology.hpp"
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <queue>
 #include <utility>
@@ -13,6 +14,7 @@ struct CavityEdge {
     int a;
     int b;
     int outside;
+    int owner;     // the cavity triangle this edge belongs to
 };
 
 Mesh makeSuperTriangle(const std::vector<Point>& points) {
@@ -96,15 +98,15 @@ static std::vector<CavityEdge> cavityBoundary(const Mesh& mesh, const std::vecto
         const Triangle& t = mesh.meshTriangle[c];
 
         if (t.n0 == -1 || !inCavity[t.n0]) {
-            CavityEdge ce = {t.v1, t.v2, t.n0};
+            CavityEdge ce = {t.v1, t.v2, t.n0, c};
             cavityEdge.push_back(ce);
         }
         if (t.n1 == -1 || !inCavity[t.n1]) {
-            CavityEdge ce = {t.v2, t.v0, t.n1};
+            CavityEdge ce = {t.v2, t.v0, t.n1, c};
             cavityEdge.push_back(ce);
         }
         if (t.n2 == -1 || !inCavity[t.n2]) {
-            CavityEdge ce = {t.v0, t.v1, t.n2};
+            CavityEdge ce = {t.v0, t.v1, t.n2, c};
             cavityEdge.push_back(ce);
         }
     }
@@ -118,18 +120,44 @@ static std::vector<CavityEdge> cavityBoundary(const Mesh& mesh, const std::vecto
 //   3. replace the cavity by a fan of triangles {p, a, b}, one per outline edge,
 //      reusing the cavity's slots so no other triangle index changes
 // Requires valid neighbours on entry and keeps them valid. All triangles are CCW.
-int insertPoint(Mesh& mesh, Point p) {
+static int walkStart(const Mesh& mesh) {
     int start = mesh.lastTriangle;
     if (start < 0 || start >= static_cast<int>(mesh.meshTriangle.size())) start = 0;
-    int tIdx = walkToTriangle(mesh, start, p);
+    return start;
+}
+
+static bool samePoint(const Point& a, const Point& b) {
+    return a.x == b.x && a.y == b.y;
+}
+
+std::vector<int> findCavityOf(const Mesh& mesh, const Point& p) {
+    if (mesh.meshTriangle.empty()) return {};
+    int t = walkToTriangle(mesh, walkStart(mesh), p);
+    if (t == -1) return {};
+    return findCavity(mesh, t, p);
+}
+
+int insertPoint(Mesh& mesh, Point p, InsertChange* change) {
+    if (change) *change = InsertChange{};
+    int tIdx = walkToTriangle(mesh, walkStart(mesh), p);
     if (tIdx == -1) {
         std::cerr << "insertPoint: walk did not find a triangle for (" << p.x << ", " << p.y << ")\n";
         std::abort();
     }
     int idx = static_cast<int>(mesh.addPoint(p));
 
+    // a duplicate of an existing vertex: keep the point, leave the triangles alone
+    const Triangle& t0 = mesh.meshTriangle[tIdx];
+    if (samePoint(p, mesh.meshPoint[t0.v0]) || samePoint(p, mesh.meshPoint[t0.v1]) ||
+        samePoint(p, mesh.meshPoint[t0.v2])) {
+        return idx;
+    }
+
     std::vector<int> cavity = findCavity(mesh, tIdx, p);
     std::vector<CavityEdge> cavEdge = cavityBoundary(mesh, cavity);
+    if (change) {
+        for (int c : cavity) change->removed.push_back(mesh.meshTriangle[c]);
+    }
 
     // the new triangles: vertices and the neighbour across the outline edge
     std::vector<Triangle> newTri(cavEdge.size());
@@ -172,6 +200,10 @@ int insertPoint(Mesh& mesh, Point p) {
         setNeighbour(mesh.meshTriangle[cavEdge[i].outside], cavEdge[i].a, cavEdge[i].b, slot[i]);
     }
 
+    if (change) {
+        change->added = slot;
+        for (const auto& e : cavEdge) change->addedFrom.push_back(e.owner);
+    }
     mesh.lastTriangle = slot[0];   // a triangle touching p: a good start for the next walk
     return idx;
 }
@@ -197,12 +229,47 @@ void removeSuperTriangle(Mesh& mesh) {
     buildNeighbours(mesh);   // triangle indices changed, so the old neighbours are invalid
 }
 
+// Insertion order: the points sorted into rows of cells, alternating direction from row to
+// row (a "snake"), so each point is close to the previous one and the walk stays short.
+static std::vector<int> spatialOrder(const std::vector<Point>& points) {
+    double minY = points[0].y, maxY = points[0].y;
+    for (const auto& p : points) {
+        minY = std::min(minY, p.y);
+        maxY = std::max(maxY, p.y);
+    }
+    const int rows = std::max(1, static_cast<int>(std::sqrt(points.size() / 2.0)));
+    const double height = maxY - minY;
+    auto rowOf = [&](const Point& p) {
+        if (height <= 0) return 0;
+        return std::min(rows - 1, static_cast<int>((p.y - minY) / height * rows));
+    };
+
+    std::vector<int> order(points.size());
+    for (std::size_t i = 0; i < order.size(); i++) order[i] = static_cast<int>(i);
+    std::stable_sort(order.begin(), order.end(), [&](int i, int j) {
+        int ri = rowOf(points[i]), rj = rowOf(points[j]);
+        if (ri != rj) return ri < rj;
+        return (ri % 2 == 0) ? points[i].x < points[j].x : points[i].x > points[j].x;
+    });
+    return order;
+}
+
 Mesh delaunay(const std::vector<Point>& points) {
     if (points.empty()) return Mesh{};
+    std::vector<int> order = spatialOrder(points);
+
     Mesh mesh = makeSuperTriangle(points);
-    for (const auto& point : points) {
-        insertPoint(mesh, point);
+    for (int i : order) {
+        insertPoint(mesh, points[i]);
     }
     removeSuperTriangle(mesh);
+
+    // point k of the mesh is points[order[k]]: renumber so the output keeps the input numbering
+    for (auto& t : mesh.meshTriangle) {
+        t.v0 = order[t.v0];
+        t.v1 = order[t.v1];
+        t.v2 = order[t.v2];
+    }
+    mesh.meshPoint = points;
     return mesh;
 }
