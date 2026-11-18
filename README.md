@@ -188,6 +188,9 @@ output/         generated files (VTK, Nastran, CSV); not committed
   three point indices.
 - File formats use 1-based ids; the reader maps Gmsh node ids to internal 0-based indices
   with a lookup table, so meshes with gaps in their numbering load correctly.
+- Every triangle stores its three neighbours (`n0` is across from vertex 0, and so on; -1 means
+  no neighbour). All triangles are counter-clockwise. Delaunay insertion locates the point by
+  walking across neighbours and replaces the cavity in place, keeping the neighbours valid.
 - Refinement keeps the super-triangle in the mesh until the end, so point indices stay
   stable while points are inserted; the interior is extracted once, at the end.
 - Adding a format means adding one `MeshReader`/`MeshWriter` subclass and one line in its
@@ -196,8 +199,8 @@ output/         generated files (VTK, Nastran, CSV); not committed
 ## Roadmap
 
 - Multithreaded smoothing and quality evaluation, with benchmarks on large meshes
-- Faster triangulation and refinement (triangle adjacency and point location instead of
-  scanning every triangle, and updating the interior incrementally instead of recomputing it)
+- Faster refinement (updating the interior and the list of bad triangles incrementally instead
+  of recomputing them on every iteration). Triangulation itself is done: see `docs/benchmarks.md`
 - A maximum triangle area, so the mesh can also be graded by size and not only by shape
 - Reading a domain (points, segments, holes) from a file instead of the built-in plate
 - More formats (Gmsh writer, Nastran reader) and quad elements
