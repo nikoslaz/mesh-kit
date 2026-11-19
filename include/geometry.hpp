@@ -19,7 +19,7 @@ bool encroaches(const Point& a, const Point& b, const Point& p);
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
-Point circumcenter(const Point& a, const Point& b, const Point& c);   
+Point circumcenter(const Point& a, const Point& b, const Point& c); 
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
 

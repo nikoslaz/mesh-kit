@@ -31,6 +31,8 @@ std::vector<double> minAngles(const Mesh& mesh) {
     return result;
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 double radiusEdgeRatio(const Point& a, const Point& b, const Point& c) {
     Point p = circumcenter(a, b, c);
     double R = std::hypot(p.x - a.x, p.y - a.y);
@@ -41,4 +43,55 @@ double radiusEdgeRatio(const Point& a, const Point& b, const Point& c) {
     double shortest = std::min({ab, bc, ca});
 
     return R / shortest;
+}
+
+static Point3 sub(const Point3& p, const Point3& q) {
+    return  Point3 {p.x - q.x, p.y - q.y, p.z - q.z};
+}     
+
+static double dot(const Point3& p, const Point3& q) {
+    return (p.x*q.x + p.y*q.y + p.z*q.z);
+}
+
+static Point3 cross(const Point3& p, const Point3& q){
+    return Point3{p.y*q.z - p.z*q.y, p.z*q.x - p.x*q.z, p.x*q.y - p.y*q.x};
+}
+
+static double norm(const Point3& p) {
+    return std::sqrt(dot(p, p));
+}
+
+// Radius ratio 3r/R of a tetrahedron: 1 for a regular tet, 0 for a flat one.
+double tetRadiusRatio(const Point3& a, const Point3& b, const Point3& c, const Point3& d) {
+    Point3 u = sub(b, a);
+    Point3 v = sub(c, a);
+    Point3 w = sub(d, a);
+
+    double vol6 = std::fabs(dot(u, cross(v, w)));   // 6 x volume
+    if (vol6 == 0) return 0;                         // flat tet
+    double V = vol6 / 6;
+
+    double S = norm(cross(u, v)) / 2                  // face abc
+             + norm(cross(u, w)) / 2                  // face abd
+             + norm(cross(v, w)) / 2                  // face acd
+             + norm(cross(sub(c, b), sub(d, b))) / 2; // face bcd
+    double r = 3 * V / S;                             // inradius
+
+    // circumradius: |circumcentre - a| = |top| / (2 * 6V)
+    Point3 cu = cross(v, w), cv = cross(w, u), cw = cross(u, v);
+    double uu = dot(u, u), vv = dot(v, v), ww = dot(w, w);
+    Point3 top{uu * cu.x + vv * cv.x + ww * cw.x,
+               uu * cu.y + vv * cv.y + ww * cw.y,
+               uu * cu.z + vv * cv.z + ww * cw.z};
+    double R = norm(top) / (2 * vol6);
+
+    return 3 * r / R;
+}
+
+std::vector<double> tetQualities(const TetMesh& mesh) {
+    std::vector<double> q;
+    q.reserve(mesh.tets.size());
+    for (const auto& t : mesh.tets)
+        q.push_back(tetRadiusRatio(mesh.points[t.v0], mesh.points[t.v1], mesh.points[t.v2], mesh.points[t.v3]));
+    return q;
 }

@@ -6,6 +6,8 @@ static void init() {
     if (!done) { exactinit(); done = true; }
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 double orientation(const Point& a, const Point& b, const Point& c){ 
     init(); 
 
@@ -15,6 +17,25 @@ double orientation(const Point& a, const Point& b, const Point& c){
 
     return orient2d(pa, pb, pc);
 }
+
+double orientation(const Point3& a, const Point3& b, const Point3& c, const Point3& d) {
+    init(); 
+
+    double pa[3] = {a.x, a.y, a.z};
+    double pb[3] = {b.x, b.y, b.z};
+    double pc[3] = {c.x, c.y, c.z};
+    double pd[3] = {d.x, d.y, d.z};
+
+    return orient3d(pa, pb, pc, pd);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+bool encroaches(const Point& a, const Point& b, const Point& p) {
+    return ((a.x - p.x)*(b.x - p.x) + (a.y - p.y)*(b.y - p.y) < 0);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 bool inCircumcircle(const Point& a, const Point& b, const Point& c, const Point& d) {
     init(); 
@@ -30,9 +51,22 @@ bool inCircumcircle(const Point& a, const Point& b, const Point& c, const Point&
     return (inc * o > 0);
 }
 
-bool encroaches(const Point& a, const Point& b, const Point& p) {
-    return ((a.x - p.x)*(b.x - p.x) + (a.y - p.y)*(b.y - p.y) < 0);
+bool inCircumcircle(const Point3& a, const Point3& b, const Point3& c, const Point3& d, const Point3& e) {
+    init(); 
+
+    double pa[3] = {a.x, a.y, a.z};
+    double pb[3] = {b.x, b.y, b.z};
+    double pc[3] = {c.x, c.y, c.z};
+    double pd[3] = {d.x, d.y, d.z};
+    double pe[3] = {e.x, e.y, e.z};      
+
+    double inc = insphere(pa, pb, pc, pd, pe);
+    double o = orientation(a, b, c, d);
+
+    return (inc * o > 0);
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 Point circumcenter(const Point& a, const Point& b, const Point& c) { 
     double bx = b.x - a.x;
@@ -49,30 +83,4 @@ Point circumcenter(const Point& a, const Point& b, const Point& c) {
     double uy = (bx*c2 - cx*b2) / d;
 
     return {a.x + ux, a.y + uy};
-}
-
-double orientation(const Point3& a, const Point3& b, const Point3& c, const Point3& d) {
-    init(); 
-
-    double pa[3] = {a.x, a.y, a.z};
-    double pb[3] = {b.x, b.y, b.z};
-    double pc[3] = {c.x, c.y, c.z};
-    double pd[3] = {d.x, d.y, d.z};
-
-    return orient3d(pa, pb, pc, pd);
-}
-
-bool inCircumcircle(const Point3& a, const Point3& b, const Point3& c, const Point3& d, const Point3& e) {
-    init(); 
-
-    double pa[3] = {a.x, a.y, a.z};
-    double pb[3] = {b.x, b.y, b.z};
-    double pc[3] = {c.x, c.y, c.z};
-    double pd[3] = {d.x, d.y, d.z};
-    double pe[3] = {e.x, e.y, e.z};      
-
-    double inc = insphere(pa, pb, pc, pd, pe);
-    double o = orientation(a, b, c, d);
-
-    return (inc * o > 0);
 }

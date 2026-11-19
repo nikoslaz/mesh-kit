@@ -10,6 +10,7 @@
 #include "delaunay3d.hpp"
 #include "vtk_writer.hpp"
 #include "geometry.hpp"
+#include "quality.hpp"
 #include "topology.hpp"
 
 static int failures = 0;
@@ -155,6 +156,22 @@ int main() {
         checkBool("one '4 v0 v1 v2 v3' line per tet", cellLines == (int)m.tets.size(), true);
         checkBool("CELL_TYPES count matches", nTypes == m.tets.size(), true);
         std::remove(path.c_str());
+    }
+    {
+        std::cout << "--- tetRadiusRatio ---\n";
+        Point3 r0{1, 1, 1}, r1{1, -1, -1}, r2{-1, 1, -1}, r3{-1, -1, 1};   // regular tet
+        checkNear("regular tet = 1", tetRadiusRatio(r0, r1, r2, r3), 1.0, 1e-12);
+        Point3 o{0,0,0}, x{1,0,0}, y{0,1,0}, z{0,0,1};
+        checkNear("corner tet = 0.732", tetRadiusRatio(o, x, y, z), 3.0 * (std::sqrt(3.0) - 1) / 3.0 * 1.0, 1e-12);
+        checkNear("swapping two vertices gives the same value", tetRadiusRatio(o, y, x, z), tetRadiusRatio(o, x, y, z), 1e-15);
+        checkNear("scaling does not change it", tetRadiusRatio({0,0,0},{5,0,0},{0,5,0},{0,0,5}), tetRadiusRatio(o, x, y, z), 1e-12);
+        checkBool("nearly flat tet is close to 0", tetRadiusRatio(o, x, y, {0.3, 0.3, 1e-6}) < 1e-4, true);
+        checkNear("flat tet = 0", tetRadiusRatio(o, x, y, {0.3, 0.3, 0}), 0.0, 0.0);
+        TetMesh m = delaunay3d(cube);
+        auto q = tetQualities(m);
+        bool inRange = q.size() == m.tets.size();
+        for (double v : q) if (!(v > 0 && v <= 1 + 1e-12)) inRange = false;
+        checkBool("tetQualities: one value per tet, all in (0, 1]", inRange, true);
     }
 
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");
