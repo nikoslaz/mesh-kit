@@ -5,6 +5,7 @@
 #include <map>
 #include <utility>
 #include <vector>
+#include <set>
 #include "mesh.hpp"
 #include "domain.hpp"
 

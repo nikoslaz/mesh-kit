@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include "vtk_writer.hpp"
 #include "geometry.hpp"
 #include "quality.hpp"
+#include "smoothing.hpp"
 #include "topology.hpp"
 
 static int failures = 0;
@@ -192,6 +194,65 @@ int main() {
         checkBool("CELL_DATA count matches", nData == m.tets.size(), true);
         checkBool("one value per tet after the lookup table", values == (int)m.tets.size(), true);
         std::remove(path.c_str());
+    }
+
+    {
+        std::cout << "--- guarded Laplacian smoothing 3D ---\n";
+        std::mt19937 g(3);
+        std::uniform_real_distribution<double> u(0.0, 1.0);
+        std::vector<Point3> pts = cube;
+        for (int i = 0; i < 500; ++i) pts.push_back({u(g), u(g), u(g)});
+        TetMesh m = delaunay3d(pts);
+
+        auto stats = [](const std::vector<double>& q, double& mn, double& mean) {
+            mn = *std::min_element(q.begin(), q.end());
+            double s = 0; for (double x : q) s += x;
+            mean = s / q.size();
+        };
+        double minB, meanB, minA, meanA;
+        stats(tetQualities(m), minB, meanB);
+        auto hullBefore = hullVertices(m);
+        std::vector<Point3> before = m.points;
+        double volBefore = totalVolume(m);
+
+        int moves = laplacianSmooth3d(m, 10);
+
+        stats(tetQualities(m), minA, meanA);
+        std::cout << "  moves kept: " << moves << "\n";
+        std::cout << "  radius ratio  min: " << minB << " -> " << minA
+                  << "   mean: " << meanB << " -> " << meanA << "\n";
+
+        checkBool("some moves were kept", moves > 0, true);
+        checkBool("all tets still positive", countNonPositive(m) == 0, true);
+        checkBool("neighbour links still valid", countBadNeighbours(m) == 0, true);
+        checkBool("minimum quality did not drop", minA >= minB, true);
+        checkBool("mean quality improved", meanA > meanB, true);
+        checkNear("volume unchanged (hull is fixed)", totalVolume(m), volBefore, 1e-9);
+
+        bool hullFixed = true;
+        for (std::size_t v = 0; v < m.points.size(); ++v)
+            if (hullBefore[v] && (m.points[v].x != before[v].x || m.points[v].y != before[v].y || m.points[v].z != before[v].z))
+                hullFixed = false;
+        checkBool("hull vertices did not move", hullFixed, true);
+    }
+
+    {
+        // KNOWN BUG: the super-tet is finite. A point very close to a hull face gives flat tets with a huge
+        // circumsphere that reaches a super-tet corner, so the face links to that corner and the tets between
+        // the point and the face are lost in removeSuperTet. Fix: one symbolic vertex at infinity (ghost tets).
+        // Reported but not counted as a failure; when it starts passing, make it a normal checkBool.
+        std::cout << "--- point very close to a hull face (known bug) ---\n";
+        std::vector<Point3> pts = cube;
+        pts.push_back({0.4, 0.3, 1e-9});
+        TetMesh m = delaunay3d(pts);
+        int touching = 0;
+        for (const auto& kv : buildFaceMap(m))
+            if (kv.second.size() == 1)
+                for (int v : kv.first) if (v == 8) { ++touching; break; }
+        if (touching == 0)
+            std::cout << "FIXED  no hull face touches the near point: turn this into a normal check\n";
+        else
+            std::cout << "KNOWN BUG  " << touching << " hull faces touch the near point (should be 0)\n";
     }
 
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");

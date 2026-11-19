@@ -13,6 +13,7 @@ add_library(meshkit
     src/delaunay.cpp
     src/quality.cpp
     src/smoothing.cpp
+    src/smoothing3d.cpp
     src/mesh_io.cpp
     src/predicate.c
     src/domain.cpp

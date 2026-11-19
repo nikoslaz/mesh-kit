@@ -7,10 +7,12 @@
 #include <vector>
 
 #include "delaunay.hpp"
+#include "delaunay3d.hpp"
 #include "domain.hpp"
 #include "geometry.hpp"
 #include "quality.hpp"
 #include "refine.hpp"
+#include "smoothing.hpp"
 #include "topology.hpp"
 
 static int failures = 0;
@@ -426,6 +428,163 @@ int main() {
         checkBool("works from many different start triangles", startOk, true);
 
         checkBool("a point outside the mesh returns -1", walkToTriangle(mesh, 0, {5, 5}) == -1, true);
+    }
+
+    std::cout << "--- vertexTets ---\n";
+    {
+        std::mt19937 g(7);
+        std::uniform_real_distribution<double> u(0.0, 1.0);
+        std::vector<Point3> pts = {{0,0,0},{1,0,0},{0,1,0},{1,1,0},{0,0,1},{1,0,1},{0,1,1},{1,1,1}};
+        for (int i = 0; i < 200; ++i) pts.push_back({u(g), u(g), u(g)});
+        pts.push_back({0.5, 0.5, 0.5});
+        pts.push_back({0.5, 0.5, 0.5});   // duplicate: ends up in no tet
+        TetMesh m = delaunay3d(pts);
+        auto vt = vertexTets(m);
+
+        checkBool("one list per vertex", vt.size() == m.points.size(), true);
+
+        bool containsOk = true, rangeOk = true;
+        std::size_t total = 0;
+        for (std::size_t v = 0; v < vt.size(); ++v) {
+            total += vt[v].size();
+            for (int t : vt[v]) {
+                if (t < 0 || t >= static_cast<int>(m.tets.size())) { rangeOk = false; continue; }
+                const Tet& tet = m.tets[t];
+                int c[4] = {tet.v0, tet.v1, tet.v2, tet.v3};
+                if (std::find(c, c + 4, static_cast<int>(v)) == c + 4) containsOk = false;
+            }
+        }
+        checkBool("tet ids are valid", rangeOk, true);
+        checkBool("every listed tet contains the vertex", containsOk, true);
+        checkBool("total entries = 4 * number of tets", total == 4 * m.tets.size(), true);
+
+        bool countOk = true;
+        for (std::size_t v = 0; v < vt.size(); ++v) {
+            std::size_t n = 0;
+            for (const Tet& tet : m.tets)
+                if (tet.v0 == static_cast<int>(v) || tet.v1 == static_cast<int>(v) ||
+                    tet.v2 == static_cast<int>(v) || tet.v3 == static_cast<int>(v)) ++n;
+            if (n != vt[v].size()) countOk = false;
+        }
+        checkBool("list length matches brute-force count", countOk, true);
+
+        bool hasEmpty = false;
+        for (const auto& l : vt) if (l.empty()) hasEmpty = true;
+        checkBool("the duplicate point has an empty list", hasEmpty, true);
+    }
+
+    std::cout << "--- vertexNeighbours ---\n";
+    {
+        // two tets sharing a face: A = (0,1,2,3), B = (1,2,3,4)
+        TetMesh two;
+        for (int i = 0; i < 5; ++i) two.addPoint({double(i), double(i * i), double(i % 2)});
+        two.addTet({0, 1, 2, 3});
+        two.addTet({1, 2, 3, 4});
+        auto nb = vertexNeighbours(two, vertexTets(two));
+        checkBool("hand example: vertex 0 -> {1,2,3}", nb[0] == std::set<int>({1, 2, 3}), true);
+        checkBool("hand example: vertex 1 -> {0,2,3,4}", nb[1] == std::set<int>({0, 2, 3, 4}), true);
+        checkBool("hand example: vertex 4 -> {1,2,3}", nb[4] == std::set<int>({1, 2, 3}), true);
+    }
+    {
+        std::mt19937 g(11);
+        std::uniform_real_distribution<double> u(0.0, 1.0);
+        std::vector<Point3> pts = {{0,0,0},{1,0,0},{0,1,0},{1,1,0},{0,0,1},{1,0,1},{0,1,1},{1,1,1}};
+        for (int i = 0; i < 200; ++i) pts.push_back({u(g), u(g), u(g)});
+        pts.push_back({0.5, 0.5, 0.5});
+        pts.push_back({0.5, 0.5, 0.5});   // duplicate: no tets, no neighbours
+        TetMesh m = delaunay3d(pts);
+        auto nb = vertexNeighbours(m, vertexTets(m));
+
+        checkBool("one set per vertex", nb.size() == m.points.size(), true);
+
+        bool noSelf = true, symmetric = true, inRange = true;
+        for (std::size_t v = 0; v < nb.size(); ++v)
+            for (int w : nb[v]) {
+                if (w == static_cast<int>(v)) noSelf = false;
+                if (w < 0 || w >= static_cast<int>(nb.size())) { inRange = false; continue; }
+                if (!nb[w].count(static_cast<int>(v))) symmetric = false;
+            }
+        checkBool("neighbour ids valid", inRange, true);
+        checkBool("no vertex is its own neighbour", noSelf, true);
+        checkBool("symmetric (a in nb[b] <=> b in nb[a])", symmetric, true);
+
+        // brute force: v and w are neighbours iff some tet contains both
+        bool bruteOk = true;
+        for (std::size_t v = 0; v < nb.size(); ++v) {
+            std::set<int> expect;
+            for (const Tet& tet : m.tets) {
+                int c[4] = {tet.v0, tet.v1, tet.v2, tet.v3};
+                if (std::find(c, c + 4, static_cast<int>(v)) == c + 4) continue;
+                for (int x : c) if (x != static_cast<int>(v)) expect.insert(x);
+            }
+            if (expect != nb[v]) bruteOk = false;
+        }
+        checkBool("matches brute force over all tets", bruteOk, true);
+
+        bool dup = false;
+        for (const auto& s : nb) if (s.empty()) dup = true;
+        checkBool("the duplicate point has no neighbours", dup, true);
+    }
+
+    std::cout << "--- hullVertices ---\n";
+    {
+        std::mt19937 g(5);
+        std::uniform_real_distribution<double> u(0.05, 0.95);   // strictly inside the cube
+        std::vector<Point3> pts = {{0,0,0},{1,0,0},{0,1,0},{1,1,0},{0,0,1},{1,0,1},{0,1,1},{1,1,1}};
+        for (int i = 0; i < 200; ++i) pts.push_back({u(g), u(g), u(g)});
+        pts.push_back({0.5, 0.5, 0.0});   // on a cube face: hull
+        int faceIdx = static_cast<int>(pts.size()) - 1;
+        pts.push_back({0.5, 0.5, 0.5});   // interior
+        pts.push_back({0.5, 0.5, 0.5});   // duplicate: unused
+        TetMesh m = delaunay3d(pts);
+        auto hull = hullVertices(m);
+
+        checkBool("one flag per vertex", hull.size() == m.points.size(), true);
+
+        bool cornersOk = true;
+        for (int c = 0; c < 8; ++c) if (!hull[c]) cornersOk = false;
+        checkBool("the 8 cube corners are hull", cornersOk, true);
+        checkBool("the point on a cube face is hull", hull[faceIdx], true);
+
+        bool interiorOk = true;
+        for (std::size_t v = 8; v < hull.size(); ++v)
+            if (static_cast<int>(v) != faceIdx && hull[v]) interiorOk = false;
+        checkBool("every other vertex is not hull", interiorOk, true);
+
+        // brute force: faces owned by exactly one tet are boundary faces
+        std::vector<bool> expect(m.points.size(), false);
+        for (const auto& kv : buildFaceMap(m))
+            if (kv.second.size() == 1)
+                for (int v : kv.first) expect[v] = true;
+        checkBool("matches vertices of single-tet faces (buildFaceMap)", hull == expect, true);
+    }
+
+    std::cout << "--- tryMoveVertex ---\n";
+    {
+        // corner tet (0,1,2,3) with vertex 4 inside, so 4 tets surround vertex 4
+        std::vector<Point3> pts = {{0,0,0},{1,0,0},{0,1,0},{0,0,1},{0.1,0.1,0.1}};
+        TetMesh m = delaunay3d(pts);
+        auto vt = vertexTets(m);
+        const int v = 4;
+        Point3 before = m.points[v];
+
+        Point3 good{0.2, 0.2, 0.2};   // worst radius ratio goes 0.13 -> 0.21
+        bool kept = tryMoveVertex(m, v, good, vt[v]);
+        checkBool("move that improves the worst quality is kept", kept, true);
+        checkBool("vertex really moved", m.points[v].x == good.x && m.points[v].y == good.y && m.points[v].z == good.z, true);
+
+        Point3 cur = m.points[v];
+        Point3 outside{2.0, 2.0, 2.0};   // far outside the tet: inverts tets
+        bool kept2 = tryMoveVertex(m, v, outside, vt[v]);
+        checkBool("move outside the cavity is rejected", kept2, false);
+        checkBool("vertex restored after rejection", m.points[v].x == cur.x && m.points[v].y == cur.y && m.points[v].z == cur.z, true);
+
+        Point3 bad{0.001, 0.001, 0.001};   // near a corner: valid but worse quality
+        Point3 cur2 = m.points[v];
+        bool kept3 = tryMoveVertex(m, v, bad, vt[v]);
+        checkBool("move that lowers worst quality is rejected", kept3, false);
+        checkBool("vertex restored after quality rejection", m.points[v].x == cur2.x && m.points[v].y == cur2.y && m.points[v].z == cur2.z, true);
+        (void)before;
     }
 
     std::cout << "\n" << (failures == 0 ? "ALL TOPOLOGY TESTS PASSED" : "SOME TESTS FAILED")
