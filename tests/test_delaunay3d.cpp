@@ -109,6 +109,23 @@ int main() {
         checkBool("all points used", m.points.size() == pts.size(), true);
     }
 
+    {
+        std::vector<Point3> pts = cube;
+        pts.push_back({0.5, 0.5, 0.5});
+        pts.push_back({0.5, 0.5, 0.5});   // exact duplicate of the centre
+        pts.push_back({0, 0, 0});         // duplicate of a corner
+        pts.push_back({0.25, 0.3, 0.7});
+        TetMesh m = delaunay3d(pts);
+        checkMesh("duplicate points", m);
+        checkNear("volume = 1", totalVolume(m), 1.0, 1e-12);
+        checkBool("input numbering kept (all points present)", m.points.size() == pts.size(), true);
+        std::vector<bool> used(m.points.size(), false);
+        for (const auto& t : m.tets) { used[t.v0] = used[t.v1] = used[t.v2] = used[t.v3] = true; }
+        int unused = 0;
+        for (bool u : used) if (!u) ++unused;
+        checkBool("exactly the 2 duplicates are unused", unused == 2, true);
+    }
+
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");
     return failures == 0 ? 0 : 1;
 }

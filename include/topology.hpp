@@ -1,6 +1,7 @@
 #ifndef TOPOLOGY_HPP
 #define TOPOLOGY_HPP
 
+#include <array>
 #include <map>
 #include <utility>
 #include <vector>

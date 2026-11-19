@@ -2,6 +2,7 @@
 #include "geometry.hpp"
 #include "delaunay.hpp"
 #include <algorithm>
+#include <array>
 #include <set>
 #include <utility>
 #include <random>

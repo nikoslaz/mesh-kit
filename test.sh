@@ -16,7 +16,7 @@ status=0
 # (-ffp-contract=off: the exact arithmetic breaks if the compiler fuses multiply-add)
 $CC -w -ffp-contract=off -c src/predicate.c -o "$BUILD_DIR/predicate.o" || exit 1
 
-for t in test_geometry test_delaunay test_io test_domain test_refine test_topology; do
+for t in test_geometry test_delaunay test_io test_domain test_refine test_topology test_delaunay3d; do
     echo "===== $t ====="
     if $CXX $FLAGS tests/$t.cpp $LIB_SRC "$BUILD_DIR/predicate.o" -o "$BUILD_DIR/$t"; then
         "$BUILD_DIR/$t" || status=1

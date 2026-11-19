@@ -9,8 +9,6 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
-#include <cassert>
-#include <functional>
 
 struct CaviteFace {
     int a;
@@ -219,6 +217,13 @@ int insertPoint3d(TetMesh& mesh, Point3 p) {
     int start = walkToTet(mesh, hint, p);
     if (start == -1) return -1;
     int idx = mesh.addPoint(p);
+
+    const Tet& s = mesh.tets[start];
+    int vs[4] = {s.v0, s.v1, s.v2, s.v3};
+    for (int v : vs) {
+        const Point3& q = mesh.points[v];
+        if (q.x == p.x && q.y == p.y && q.z == p.z) return idx;
+    }
 
     std::vector<int> cavity = findCavity(mesh, start, p);
     std::vector<CaviteFace> caviteFace = cavityBoundary(mesh,cavity);
