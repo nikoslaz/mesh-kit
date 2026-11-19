@@ -24,7 +24,6 @@ class Mesh {
 public:
     std::vector<Point> meshPoint;
     std::vector<Triangle> meshTriangle;
-    // the walk starts here.
     int lastTriangle = 0;
 
     std::size_t addPoint(Point point) {
@@ -60,6 +59,7 @@ class TetMesh {
 public:
     std::vector<Point3> points;
     std::vector<Tet> tets;
+    int lastTet = 0;
 
     std::size_t addPoint(Point3 point) {
         points.push_back(point);

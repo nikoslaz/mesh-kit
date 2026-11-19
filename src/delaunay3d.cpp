@@ -6,7 +6,11 @@
 #include <queue>
 #include <utility>
 #include <cstdlib>
+#include <cassert>
+#include <functional>
 #include <iostream>
+#include <cassert>
+#include <functional>
 
 struct CaviteFace {
     int a;
@@ -72,12 +76,29 @@ TetMesh makeSuperTet(const std::vector<Point3>& points) {
     return mesh;
 }
 
-// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+void removeSuperTet(TetMesh& mesh) {
+    std::vector<Tet> result;
 
+    for (const auto& tet : mesh.tets) {
+        if (tet.v0 >= 4 && tet.v1 >= 4 && tet.v2 >= 4 && tet.v3 >= 4) {
+            result.push_back(tet);
+        }
+    }
 
-std::vector<int> findCavityOf(const TetMesh& mesh, const Point3& p) {
+    for (auto& tet : result) {
+        tet.v0 -= 4;
+        tet.v1 -= 4;
+        tet.v2 -= 4;
+        tet.v3 -= 4;
+    }
 
+    mesh.points.erase(mesh.points.begin(), mesh.points.begin() + 4);
+    mesh.tets = result;
+    mesh.lastTet = 0;   // the tet were renumbered
+    buildNeighbours(mesh);   // tet indices changed, so the old neighbours are invalid
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 static std::vector<int> findCavity(const TetMesh& mesh, int start, const Point3& p) {
     std::vector<int> cavity;
@@ -141,3 +162,137 @@ static std::vector<CaviteFace> cavityBoundary(const TetMesh& mesh, const std::ve
 
     return caviteFace;
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+int insertPoint3d(TetMesh& mesh, Point3 p) {
+    int start = walkToTet(mesh, 0, p);
+    if (start == -1) return -1;
+    int idx = mesh.addPoint(p);
+
+    std::vector<int> cavity = findCavity(mesh, start, p);
+    std::vector<CaviteFace> caviteFace = cavityBoundary(mesh,cavity);
+    std::vector<int> newTets;
+
+    for (size_t i = 0; i < caviteFace.size(); i++) {
+        int a = caviteFace[i].a;
+        int b = caviteFace[i].b;
+        int c = caviteFace[i].c;
+        Tet tet = {a, b, c, idx};
+
+        Point3 pa = mesh.points[a];
+        Point3 pb = mesh.points[b];
+        Point3 pc = mesh.points[c];
+
+        if (orientation(pa, pb, pc, p) < 0) {
+            tet.v1 = c;
+            tet.v2 = b;
+        } 
+
+        int slot;
+        if (i < cavity.size()) { 
+            slot = cavity[i]; 
+            mesh.tets[slot] = tet; 
+        }
+        else { 
+            mesh.addTet(tet); 
+            slot = (int)mesh.tets.size() - 1; 
+        }
+        newTets.push_back(slot);
+    }
+
+    for (size_t i = 0; i < newTets.size(); i++) {
+        if (caviteFace[i].outside != -1) {
+            Tet& outsideTet = mesh.tets[caviteFace[i].outside];
+            int a = caviteFace[i].a;
+            int b = caviteFace[i].b;
+            int c = caviteFace[i].c;
+            setNeighbour(outsideTet, a, b, c, newTets[i]);
+            setNeighbour(mesh.tets[newTets[i]], a, b, c, caviteFace[i].outside);
+        }
+    }
+
+    std::map<std::pair<int,int>, std::vector<int>> edgeTets;
+    for (size_t i = 0; i < newTets.size(); i++) {
+        std::pair<int,int> key;
+        int a = caviteFace[i].a;
+        int b = caviteFace[i].b;
+        int c = caviteFace[i].c;
+
+        // edge 1: between a and b
+        key = { std::min(a, b), std::max(a, b) };   
+        edgeTets[key].push_back((newTets[i]));
+
+        // edge 2: between b and c
+        key = { std::min(b, c), std::max(b, c) };   
+        edgeTets[key].push_back((newTets[i]));
+
+        // edge 3: between c and a
+        key = { std::min(c, a), std::max(c, a) };
+        edgeTets[key].push_back((newTets[i]));
+    }
+
+    for (const auto& e : edgeTets) {
+        assert(e.second.size() == 2);
+        int x = e.first.first, y = e.first.second;
+        int t1 = e.second[0], t2 = e.second[1];
+        setNeighbour(mesh.tets[t1], x, y, idx, t2);
+        setNeighbour(mesh.tets[t2], x, y, idx, t1);
+    }
+
+    // 3D can create fewer tets than the cavity held so we drop the unused cavity slots
+    if (cavity.size() > newTets.size()) {
+        std::vector<int> spare(cavity.begin() + newTets.size(), cavity.end());
+        std::sort(spare.begin(), spare.end(), std::greater<int>());
+        for (int s : spare) {
+            int last = static_cast<int>(mesh.tets.size()) - 1;
+            if (s != last) {
+                mesh.tets[s] = mesh.tets[last];
+                Tet& moved = mesh.tets[s];
+                int* ns[4] = {&moved.n0, &moved.n1, &moved.n2, &moved.n3};
+                for (int* n : ns) {
+                    if (*n == -1) continue;
+                    Tet& o = mesh.tets[*n];
+                    int* os[4] = {&o.n0, &o.n1, &o.n2, &o.n3};
+                    for (int* q : os) if (*q == last) *q = s;
+                }
+            }
+            mesh.tets.pop_back();
+        }
+    }
+
+    return idx;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+TetMesh delaunay3d(const std::vector<Point3>& points) {
+    if (points.empty()) return TetMesh{};
+
+    TetMesh mesh = makeSuperTet(points);
+    for (const auto& p : points) {
+        insertPoint3d(mesh, p);
+    }
+
+    removeSuperTet(mesh);
+
+    return mesh;
+}
+
+// if (points.empty()) return Mesh{};
+//     std::vector<int> order = spatialOrder(points);
+
+//     Mesh mesh = makeSuperTriangle(points);
+//     for (int i : order) {
+//         insertPoint(mesh, points[i]);
+//     }
+//     removeSuperTriangle(mesh);
+
+//     // point k of the mesh is points[order[k]]: renumber so the output keeps the input numbering
+//     for (auto& t : mesh.meshTriangle) {
+//         t.v0 = order[t.v0];
+//         t.v1 = order[t.v1];
+//         t.v2 = order[t.v2];
+//     }
+//     mesh.meshPoint = points;
+//     return mesh;
