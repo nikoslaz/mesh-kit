@@ -165,8 +165,58 @@ static std::vector<CaviteFace> cavityBoundary(const TetMesh& mesh, const std::ve
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
+static std::vector<int> spatialOrder(const std::vector<Point3>& points) {
+    if (points.empty()) return {};
+    double minZ = points[0].z;
+    double maxZ = points[0].z;
+    double minY = points[0].y;
+    double maxY = points[0].y;
+
+    for (const auto& p : points) {
+        minZ = std::min(minZ, p.z);
+        maxZ = std::max(maxZ, p.z);
+        minY = std::min(minY, p.y);
+        maxY = std::max(maxY, p.y);
+    }
+
+    const int layers = std::max(1, static_cast<int>(std::cbrt(points.size() / 2.0)));
+    const int rows   = layers;
+
+    const double depth = maxZ - minZ;
+    auto layerOf = [&](const Point3& p) {
+        if (depth <= 0) return 0;
+        return std::min(layers - 1, static_cast<int>((p.z - minZ) / depth * layers));
+    };
+
+    const double height = maxY - minY;
+    auto rowOf = [&](const Point3& p) {
+        if (height <= 0) return 0;
+        return std::min(rows - 1, static_cast<int>((p.y - minY) / height * rows));
+    };
+
+    std::vector<int> order(points.size());
+    for (std::size_t i = 0; i < order.size(); i++) order[i] = static_cast<int>(i);
+    std::stable_sort(order.begin(), order.end(), [&](int i, int j) {
+        int li = layerOf(points[i]), lj = layerOf(points[j]);
+        if (li != lj) return li < lj;
+
+        int ri = rowOf(points[i]), rj = rowOf(points[j]);
+        if (ri != rj) return (li % 2 == 0) ? ri < rj : ri > rj;   // flip row direction on odd layers
+
+        // same layer, same row: sort by x
+        // the row's x-direction should flip each time you move to the next row.
+        // "next row" parity depends on both layer and row: use (li + ri) % 2
+        return ((li + ri) % 2 == 0) ? points[i].x < points[j].x : points[i].x > points[j].x;
+    });
+    
+    return order;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 int insertPoint3d(TetMesh& mesh, Point3 p) {
-    int start = walkToTet(mesh, 0, p);
+    int hint = (mesh.lastTet >= 0 && mesh.lastTet < static_cast<int>(mesh.tets.size())) ? mesh.lastTet : 0;
+    int start = walkToTet(mesh, hint, p);
     if (start == -1) return -1;
     int idx = mesh.addPoint(p);
 
@@ -261,6 +311,8 @@ int insertPoint3d(TetMesh& mesh, Point3 p) {
         }
     }
 
+    mesh.lastTet = static_cast<int>(mesh.tets.size()) - 1;   // a recent tet, valid after the compaction
+
     return idx;
 }
 
@@ -268,31 +320,21 @@ int insertPoint3d(TetMesh& mesh, Point3 p) {
 
 TetMesh delaunay3d(const std::vector<Point3>& points) {
     if (points.empty()) return TetMesh{};
+    std::vector<int> order = spatialOrder(points);
 
     TetMesh mesh = makeSuperTet(points);
-    for (const auto& p : points) {
-        insertPoint3d(mesh, p);
+    for (const auto& i : order) {
+        insertPoint3d(mesh, points[i]);
     }
-
     removeSuperTet(mesh);
 
+    for (auto& t : mesh.tets) {
+        t.v0 = order[t.v0];
+        t.v1 = order[t.v1];
+        t.v2 = order[t.v2];
+        t.v3 = order[t.v3];
+    }
+
+    mesh.points = points;   // keep the input numbering
     return mesh;
 }
-
-// if (points.empty()) return Mesh{};
-//     std::vector<int> order = spatialOrder(points);
-
-//     Mesh mesh = makeSuperTriangle(points);
-//     for (int i : order) {
-//         insertPoint(mesh, points[i]);
-//     }
-//     removeSuperTriangle(mesh);
-
-//     // point k of the mesh is points[order[k]]: renumber so the output keeps the input numbering
-//     for (auto& t : mesh.meshTriangle) {
-//         t.v0 = order[t.v0];
-//         t.v1 = order[t.v1];
-//         t.v2 = order[t.v2];
-//     }
-//     mesh.meshPoint = points;
-//     return mesh;
