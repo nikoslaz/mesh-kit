@@ -38,6 +38,8 @@ void writeVTK(const Mesh& mesh, const std::string& path) {
     file.close();
 }
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 void writeVTK(const Mesh& mesh, const std::string& path, const std::string& dataName, const std::vector<double>& cellValues) {
     std::ofstream file;
     file.open(path);
@@ -78,6 +80,43 @@ void writeVTK(const Mesh& mesh, const std::string& path, const std::string& data
         file << v << '\n';
     }
 
+
+    file.close();
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+void writeVTK(const TetMesh& mesh, const std::string& path) {
+    std::ofstream file;
+    file.open(path);
+    if (!file) {
+        std::cout << "File didn't opened, exiting!" << std::endl;
+        exit(1);
+    }
+    std::size_t sizePoints = mesh.points.size(); 
+    std::size_t sizeTet = mesh.tets.size();
+
+    file << "# vtk DataFile Version 3.0" << std::endl;
+    file << "MESH SKIT OUTPUT" << std::endl;
+    file << "ASCII"<< std::endl;
+    file << "DATASET UNSTRUCTURED_GRID" << std::endl;
+    file << "POINTS " << sizePoints << " double" << std::endl;
+
+    for (const auto& point: mesh.points) {
+        file << point.x << " " << point.y << " " << point.z << std::endl;
+    }
+
+    file << "CELLS " << sizeTet << " " << sizeTet * 5 << std::endl;
+
+    for (const auto& tet: mesh.tets) {
+        file << "4 " << tet.v0 << " " << tet.v1 << " " << tet.v2 << " " << tet.v3 << std::endl;
+    }
+
+    file << "CELL_TYPES " << sizeTet << std::endl;
+
+    for (std::size_t i = 0; i < sizeTet; i++) {
+        file << "10" << std::endl;
+    } 
 
     file.close();
 }

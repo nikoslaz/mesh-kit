@@ -2,8 +2,9 @@
 
 [![CI](https://github.com/nikoslaz/mesh-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/nikoslaz/mesh-kit/actions/workflows/ci.yml)
 
-A small C++20 toolkit for 2D triangle meshes: Delaunay triangulation, **quality mesh
-generation from a boundary (Ruppert's algorithm)**, mesh quality metrics, Laplacian
+A small C++20 toolkit for 2D triangle meshes and 3D tetrahedral meshes: Delaunay
+triangulation in 2D and 3D, **quality mesh generation from a boundary (Ruppert's algorithm)**
+in 2D, mesh quality metrics, Laplacian
 smoothing, and pluggable mesh readers/writers (Gmsh in, VTK and Nastran out) selected from
 a config file. A Python script runs it in batch and reports mesh quality.
 
@@ -28,6 +29,16 @@ smallest angle (blue = poor, red = good), viewed in ParaView.*
 
 *Delaunay triangulation of the same 60 points (wireframe).*
 
+## 3D Delaunay tetrahedralization
+
+![Cross-section of a 3D Delaunay tetrahedralization](docs/images/delaunay_3d_colour_screenshot.png)
+
+*`delaunay3d` on the 8 corners of a unit cube plus 300 random points (1,878 tetrahedra): a
+cut through the middle, written with `writeVTK` (cell type 10) and viewed in ParaView.
+Coloured by tetrahedron radius ratio, capped at 10 (purple = well shaped, yellow = 10 or worse).
+The poor tets are the flat ones on the outer skin of the convex hull; plain Delaunay does not
+remove them, which is what a quality 3D mesher has to add.*
+
 ## Features
 
 - **Delaunay triangulation** (Bowyer-Watson) using robust adaptive-precision orientation and
@@ -35,6 +46,12 @@ smallest angle (blue = poor, red = good), viewed in ParaView.*
   and random point sets. On a set of nearly collinear points, a plain floating-point
   orientation test gave a vertex-order-dependent sign in 13,968 of 65,536 cases (21%); the
   robust predicates gave 0 (see `tests/test_geometry.cpp`).
+- **3D Delaunay tetrahedralization** (Bowyer-Watson with face neighbours) using Shewchuk's exact
+  `orient3d` / `insphere`. Points are inserted along a 3D snake ordering, the walk starts at the
+  last tet, and exact duplicates are ignored. Checked on random points and on the cospherical
+  cube corners: all tets positive, neighbours symmetric, empty circumspheres (brute force),
+  and total volume equal to the convex hull (see `tests/test_delaunay3d.cpp`). 100,000 random
+  points give 672,000 tets in about 2 s (`docs/benchmarks.md`).
 - **Quality mesh generation** (Ruppert's algorithm): give it a boundary (points, segments,
   holes) and a limit on the radius-edge ratio, and it returns a mesh whose triangles all
   respect the limit, with every boundary segment kept as mesh edges (see below).
@@ -173,7 +190,7 @@ It also prints a histogram of the minimum angles before and after smoothing for 
 ## Project layout
 
 ```
-include/        public headers (mesh, geometry, delaunay, domain, refine, topology, quality,
+include/        public headers (mesh, geometry, delaunay, delaunay3d, domain, refine, topology, quality,
                 smoothing, mesh_io, vtk_writer, predicate)
 src/            library implementation (libmeshkit); predicate.c is Shewchuk's C code
 apps/main.cpp   meshkit_cli
@@ -193,6 +210,10 @@ output/         generated files (VTK, Nastran, CSV); not committed
 - Every triangle stores its three neighbours (`n0` is across from vertex 0, and so on; -1 means
   no neighbour). All triangles are counter-clockwise. Delaunay insertion locates the point by
   walking across neighbours and replaces the cavity in place, keeping the neighbours valid.
+- Tetrahedra store four neighbours the same way (`n_i` is across from vertex `i`; they share a
+  face, not an edge). A tet is positive when `orient3d(v0,v1,v2,v3) > 0`. 3D insertion finds the
+  cavity of tets whose circumsphere contains the point, then fills it with one tet per boundary
+  face; there can be fewer new tets than old ones, so spare slots are removed.
 - Refinement keeps the super-triangle in the mesh until the end, so point indices stay
   stable while points are inserted; the interior is extracted once, at the end.
 - Adding a format means adding one `MeshReader`/`MeshWriter` subclass and one line in its

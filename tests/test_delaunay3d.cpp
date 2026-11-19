@@ -1,9 +1,14 @@
 #include <cmath>
+#include <cstdio>
 #include <iostream>
 #include <random>
 #include <vector>
 
+#include <fstream>
+#include <string>
+
 #include "delaunay3d.hpp"
+#include "vtk_writer.hpp"
 #include "geometry.hpp"
 #include "topology.hpp"
 
@@ -124,6 +129,32 @@ int main() {
         int unused = 0;
         for (bool u : used) if (!u) ++unused;
         checkBool("exactly the 2 duplicates are unused", unused == 2, true);
+    }
+    {
+        std::cout << "--- VTK writer ---\n";
+        std::vector<Point3> pts = cube;
+        pts.push_back({0.5, 0.5, 0.5});
+        TetMesh m = delaunay3d(pts);
+        const std::string path = "test_delaunay3d_out.vtk";
+        writeVTK(m, path);
+        std::ifstream in(path);
+        std::string line;
+        std::size_t nPoints = 0, nCells = 0, nTypes = 0, total = 0;
+        int cellLines = 0;
+        while (std::getline(in, line)) {
+            if (line.rfind("POINTS ", 0) == 0) nPoints = std::stoul(line.substr(7));
+            else if (line.rfind("CELLS ", 0) == 0) {
+                std::size_t sp = line.find(' ', 6);
+                nCells = std::stoul(line.substr(6, sp - 6));
+                total = std::stoul(line.substr(sp + 1));
+            } else if (line.rfind("CELL_TYPES ", 0) == 0) nTypes = std::stoul(line.substr(11));
+            else if (line.rfind("4 ", 0) == 0) ++cellLines;
+        }
+        checkBool("POINTS matches the vertex count", nPoints == m.points.size(), true);
+        checkBool("CELLS count and size (5 numbers per tet)", nCells == m.tets.size() && total == 5 * nCells, true);
+        checkBool("one '4 v0 v1 v2 v3' line per tet", cellLines == (int)m.tets.size(), true);
+        checkBool("CELL_TYPES count matches", nTypes == m.tets.size(), true);
+        std::remove(path.c_str());
     }
 
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");

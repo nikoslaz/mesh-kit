@@ -84,3 +84,19 @@ At 2048 sides refinement is about 300 times faster, and doubling the hole now ro
 the time instead of multiplying it by 4.5. The meshes are not identical to before: bad
 triangles are fixed in a different order, so the point count differs by a few percent. They
 meet the same guarantees (every triangle within the ratio limit, the same area and topology).
+
+## 3D Delaunay tetrahedralization
+
+`delaunay3d`, random points in the unit cube, `-O2`.
+
+```
+  points   tets     seconds (random order, start at tet 0)   seconds (3D snake order, start at last tet)
+   10000   66380    0.14                                     0.16
+   50000   335372   0.96                                     0.94
+  100000   671683   2.29                                     1.97
+```
+
+The walk start and the ordering help only a little: at 100,000 points about 1.4 s is insertion and
+0.4 s is rebuilding the neighbours after the super tetrahedron is removed. Removing the
+per-insertion allocations changed nothing, so the cost is spread over the predicates and the
+cavity bookkeeping.
