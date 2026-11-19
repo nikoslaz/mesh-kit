@@ -31,13 +31,14 @@ smallest angle (blue = poor, red = good), viewed in ParaView.*
 
 ## 3D Delaunay tetrahedralization
 
-![Cross-section of a 3D Delaunay tetrahedralization](docs/images/delaunay_3d_colour_screenshot.png)
+![Cross-section of a 3D Delaunay tetrahedralization, coloured by tet quality](docs/images/delaunay_3d_quality.png)
 
 *`delaunay3d` on the 8 corners of a unit cube plus 300 random points (1,878 tetrahedra): a
-cut through the middle, written with `writeVTK` (cell type 10) and viewed in ParaView.
-Coloured by tetrahedron radius ratio, capped at 10 (purple = well shaped, yellow = 10 or worse).
-The poor tets are the flat ones on the outer skin of the convex hull; plain Delaunay does not
-remove them, which is what a quality 3D mesher has to add.*
+cut through the middle, written with `writeVTK` (cell type 10, with per-tet cell data) and viewed
+in ParaView. Coloured by MeshKit's own radius ratio `3r/R` (`tetQualities`): 1 is a regular tet
+(red), 0 is flat (dark blue). Mean 0.45; 277 tets (15%) are below 0.1. The worst are the flat
+tets on the outer skin of the convex hull. Plain Delaunay does not remove these slivers, which is
+what a quality 3D mesher has to add.*
 
 ## Features
 
@@ -50,12 +51,13 @@ remove them, which is what a quality 3D mesher has to add.*
   `orient3d` / `insphere`. Points are inserted along a 3D snake ordering, the walk starts at the
   last tet, and exact duplicates are ignored. Checked on random points and on the cospherical
   cube corners: all tets positive, neighbours symmetric, empty circumspheres (brute force),
-  and total volume equal to the convex hull (see `tests/test_delaunay3d.cpp`). 100,000 random
+  and total volume equal to the convex hull (see `tests/test_delaunay3d.cpp`). Tet quality is
+  measured with the radius ratio `3r/R` and can be written to VTK as cell data. 100,000 random
   points give 672,000 tets in about 2 s (`docs/benchmarks.md`).
 - **Quality mesh generation** (Ruppert's algorithm): give it a boundary (points, segments,
   holes) and a limit on the radius-edge ratio, and it returns a mesh whose triangles all
   respect the limit, with every boundary segment kept as mesh edges (see below).
-- **Quality metrics**: per-triangle minimum angle and radius-edge ratio.
+- **Quality metrics**: per-triangle minimum angle and radius-edge ratio; per-tet radius ratio.
 - **Laplacian smoothing**: interior vertices move to the average of their neighbours;
   boundary vertices stay fixed.
 - **Mesh I/O** behind abstract `MeshReader` / `MeshWriter` interfaces, created by

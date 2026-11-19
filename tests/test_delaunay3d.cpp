@@ -173,6 +173,26 @@ int main() {
         for (double v : q) if (!(v > 0 && v <= 1 + 1e-12)) inRange = false;
         checkBool("tetQualities: one value per tet, all in (0, 1]", inRange, true);
     }
+    {
+        std::cout << "--- VTK writer with cell data ---\n";
+        TetMesh m = delaunay3d(cube);
+        auto q = tetQualities(m);
+        const std::string path = "test_delaunay3d_quality.vtk";
+        writeVTK(m, path, "radius_ratio", q);
+        std::ifstream in(path);
+        std::string line;
+        std::size_t nData = 0;
+        int values = 0;
+        bool afterTable = false;
+        while (std::getline(in, line)) {
+            if (line.rfind("CELL_DATA ", 0) == 0) nData = std::stoul(line.substr(10));
+            else if (line == "LOOKUP_TABLE default") afterTable = true;
+            else if (afterTable && !line.empty()) ++values;
+        }
+        checkBool("CELL_DATA count matches", nData == m.tets.size(), true);
+        checkBool("one value per tet after the lookup table", values == (int)m.tets.size(), true);
+        std::remove(path.c_str());
+    }
 
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");
     return failures == 0 ? 0 : 1;

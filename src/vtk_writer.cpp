@@ -120,3 +120,18 @@ void writeVTK(const TetMesh& mesh, const std::string& path) {
 
     file.close();
 }
+// Same as above, plus one value per tet (e.g. tetQualities) for colouring in ParaView.
+void writeVTK(const TetMesh& mesh, const std::string& path, const std::string& dataName, const std::vector<double>& cellValues) {
+    writeVTK(mesh, path);
+    std::ofstream file(path, std::ios::app);
+    if (!file) {
+        std::cout << "File didn't opened, exiting!" << std::endl;
+        exit(1);
+    }
+    file << "CELL_DATA " << mesh.tets.size() << std::endl;
+    file << "SCALARS " << dataName << " double 1" << std::endl;
+    file << "LOOKUP_TABLE default" << std::endl;
+    for (double v : cellValues) {
+        file << v << '\n';
+    }
+}
