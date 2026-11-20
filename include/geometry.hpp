@@ -23,4 +23,13 @@ Point circumcenter(const Point& a, const Point& b, const Point& c);
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
+bool flip23Tets(const TetMesh& mesh, int t1, int t2, Tet out[3]);
+bool flip32Tets(const TetMesh& mesh, int t1, int t2, int t3, Tet out[2]);
+// Flips applied to the mesh. Need valid neighbours and keep them valid (updated locally).
+// apply23 adds one tet at the end. apply32 removes t3 by moving the last tet into slot t3.
+bool apply23(TetMesh& mesh, int t1, int t2);
+bool apply32(TetMesh& mesh, int t1, int t2, int t3);
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 #endif

@@ -18,4 +18,11 @@ std::vector<double> tetQualities(const TetMesh& mesh);                          
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
+std::vector<int> findSlivers(const TetMesh& mesh, double threshold);
+double worstQuality(const TetMesh& mesh, const Tet* tets, int count); // smallest radius ratio among count tets (1.0 if count is 0)
+int removeSlivers(TetMesh& mesh, double threshold, int maxPasses);
+int improveSlivers(TetMesh& mesh, double threshold, int rounds); // removeSlivers + smoothing, repeated
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 #endif

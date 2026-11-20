@@ -277,6 +277,48 @@ int main() {
         checkBool("  ... all positive", countNonPositive(m) == 0, true);
     }
 
+    {
+        std::cout << "--- sliver removal ---\n";
+        TetMesh reg; reg.points = {{1,1,1},{1,-1,-1},{-1,1,-1},{-1,-1,1}}; reg.tets = {Tet{0,1,2,3}};
+        checkBool("regular tet: no sliver at 0.1", findSlivers(reg, 0.1).empty(), true);
+        TetMesh flat; flat.points = {{0,0,0},{1,0,0},{0,1,0},{0.3,0.3,0.001}}; flat.tets = {Tet{0,1,2,3}};
+        checkBool("near-flat tet: flagged", findSlivers(flat, 0.1).size() == 1, true);
+
+        std::vector<Point3> pts;
+        for (int i = 0; i < 8; i++) pts.push_back({double(i & 1), double((i >> 1) & 1), double((i >> 2) & 1)});
+        std::mt19937 gen(42);
+        std::uniform_real_distribution<double> u(0, 1);
+        for (int i = 0; i < 300; i++) pts.push_back({u(gen), u(gen), u(gen)});
+        TetMesh m = delaunay3d(pts);
+        const double vol0 = totalVolume(m);
+        const auto q0 = tetQualities(m);
+        const double worst0 = *std::min_element(q0.begin(), q0.end());
+        const std::size_t slivers0 = findSlivers(m, 0.1).size();
+
+        int flips = improveSlivers(m, 0.1, 20);
+
+        const auto q1 = tetQualities(m);
+        const double worst1 = *std::min_element(q1.begin(), q1.end());
+        const std::size_t slivers1 = findSlivers(m, 0.1).size();
+        std::cout << "  slivers below 0.1: " << slivers0 << " -> " << slivers1
+                  << ", worst " << worst0 << " -> " << worst1 << ", flips " << flips << "\n";
+        checkBool("slivers did not increase", slivers1 <= slivers0, true);
+        checkBool("worst tet did not get worse", worst1 >= worst0 - 1e-12, true);
+        checkBool("all tets positive", countNonPositive(m) == 0, true);
+        checkBool("neighbours symmetric", countBadNeighbours(m) == 0, true);
+        checkNear("volume unchanged", totalVolume(m), vol0, 1e-9);
+
+        // the flips update neighbours locally: they must match a full rebuild
+        TetMesh full = m;
+        buildNeighbours(full);
+        bool sameNeighbours = true;
+        for (std::size_t i = 0; i < m.tets.size(); i++) {
+            const Tet &a = m.tets[i], &b = full.tets[i];
+            if (a.n0 != b.n0 || a.n1 != b.n1 || a.n2 != b.n2 || a.n3 != b.n3) sameNeighbours = false;
+        }
+        checkBool("local neighbour updates match a full rebuild", sameNeighbours, true);
+    }
+
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");
     return failures == 0 ? 0 : 1;
 }

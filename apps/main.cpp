@@ -1,11 +1,15 @@
 // meshkit_cli
 //   meshkit_cli <config.cfg>   read -> (smooth) -> write, as described by a key=value config file
 //   meshkit_cli demo           random 60-point example, writes before/after VTK files to output/
+//   meshkit_cli tets [threshold] [points]
+//                              random 3D points plus the cube corners, Delaunay tetrahedralized, then sliver
+//                              removal (flips + smoothing); writes output/tets_before.vtk and tets_after.vtk
 //   meshkit_cli plate [ratio] [n]
 //                              10x10 plate with a circular hole (n boundary segments, default 16),
 //                              meshed with Ruppert refinement (max radius-edge ratio, default sqrt(2));
 //                              writes output/plate_coarse.vtk and output/plate.vtk
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +22,7 @@
 #include <vector>
 
 #include "delaunay.hpp"
+#include "delaunay3d.hpp"
 #include "domain.hpp"
 #include "mesh_io.hpp"
 #include "quality.hpp"
@@ -123,16 +128,64 @@ static void plate(double ratio, int circleSegments) {
               << "wrote output/plate_coarse.vtk and output/plate.vtk\n";
 }
 
+// Prints "<label>_slivers", "<label>_mean", "<label>_worst" for the radius ratio of every tet
+static void printTetStats(const std::string& label, const TetMesh& mesh, double threshold) {
+    std::vector<double> q = tetQualities(mesh);
+    double mean = q.empty() ? 0 : std::accumulate(q.begin(), q.end(), 0.0) / q.size();
+    double worst = q.empty() ? 0 : *std::min_element(q.begin(), q.end());
+    std::cout << label << "_tets " << mesh.tets.size() << "\n"
+              << label << "_slivers " << findSlivers(mesh, threshold).size() << "\n"
+              << label << "_mean " << mean << "\n"
+              << label << "_worst " << worst << "\n";
+}
+
+// Random points in the unit cube plus its 8 corners, Delaunay tetrahedralized, then sliver removal.
+static void tets(double threshold, int n) {
+    std::filesystem::create_directories("output");
+    std::vector<Point3> pts;
+    for (int i = 0; i < 8; i++) pts.push_back({double(i & 1), double((i >> 1) & 1), double((i >> 2) & 1)});
+    std::mt19937 rng(42);
+    for (int i = 0; i < n; i++)
+        pts.push_back({rng() / 4294967296.0, rng() / 4294967296.0, rng() / 4294967296.0});
+
+    TetMesh mesh = delaunay3d(pts);
+    printTetStats("before", mesh, threshold);
+    writeVTK(mesh, "output/tets_before.vtk", "radius_ratio", tetQualities(mesh));
+
+    auto t0 = std::chrono::steady_clock::now();
+    int flips = improveSlivers(mesh, threshold, 20);
+    double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+
+    printTetStats("after", mesh, threshold);
+    std::cout << "flips " << flips << "\nseconds " << seconds << "\n"
+              << "wrote output/tets_before.vtk and output/tets_after.vtk\n";
+    writeVTK(mesh, "output/tets_after.vtk", "radius_ratio", tetQualities(mesh));
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         std::cerr << "usage: meshkit_cli <config.cfg>\n"
                   << "       meshkit_cli demo\n"
+                  << "       meshkit_cli tets [threshold] [points]\n"
                   << "       meshkit_cli plate [max_ratio] [hole_segments]\n";
         return 1;
     }
     try {
         std::string arg = argv[1];
         if (arg == "demo") demo();
+        else if (arg == "tets") {
+            double threshold = 0.1;
+            int n = 300;
+            try {
+                if (argc > 2) threshold = std::stod(argv[2]);
+                if (argc > 3) n = std::stoi(argv[3]);
+            } catch (const std::exception&) {
+                throw std::runtime_error("usage: meshkit_cli tets [threshold] [points] (both numbers)");
+            }
+            if (threshold <= 0 || threshold > 1) throw std::runtime_error("threshold must be in (0, 1]");
+            if (n < 0) throw std::runtime_error("points must not be negative");
+            tets(threshold, n);
+        }
         else if (arg == "plate") {
             double ratio = std::sqrt(2.0);
             int n = 16;

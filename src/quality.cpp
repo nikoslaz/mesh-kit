@@ -1,4 +1,7 @@
 #include "quality.hpp"
+#include "geometry.hpp"
+#include "topology.hpp"
+#include "smoothing.hpp"
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -94,4 +97,86 @@ std::vector<double> tetQualities(const TetMesh& mesh) {
     for (const auto& t : mesh.tets)
         q.push_back(tetRadiusRatio(mesh.points[t.v0], mesh.points[t.v1], mesh.points[t.v2], mesh.points[t.v3]));
     return q;
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+double worstQuality(const TetMesh& mesh, const Tet* tets, int count) {
+    double minR = 1.0;
+
+    for (int i = 0; i < count; i++) {
+        const Tet& t = tets[i];
+        double r = tetRadiusRatio(mesh.points[t.v0], mesh.points[t.v1], mesh.points[t.v2], mesh.points[t.v3]);
+        if (r < minR) {
+            minR = r;
+        }
+    }
+
+    return minR;
+}
+
+std::vector<int> findSlivers(const TetMesh& mesh, double threshold) {
+    std::vector<int> slivers;
+
+    for (std::size_t i = 0; i < mesh.tets.size(); i++) {
+        const Tet& t = mesh.tets[i];
+        if (tetRadiusRatio(mesh.points[t.v0], mesh.points[t.v1], mesh.points[t.v2], mesh.points[t.v3]) < threshold ) {
+            slivers.push_back(static_cast<int>(i));
+        }
+    }
+
+    return slivers;
+}
+
+// Flips slivers away. Each pass tries every sliver once; a tet already fixed by an earlier flip in
+// the same pass is skipped. Edges with a hull vertex are never flipped, so the boundary stays the same.
+// Every accepted flip raises the worst quality of the tets it replaces. Returns the number of flips.
+int removeSlivers(TetMesh& mesh, double threshold, int maxPasses) {
+    int flips = 0;
+    for (int pass = 0; pass < maxPasses; pass++) {
+        std::vector<int> slivers = findSlivers(mesh, threshold);
+        if (slivers.empty()) break;
+
+        auto vt   = vertexTets(mesh);
+        auto hull = hullVertices(mesh);   // flips never change the boundary, so this stays valid
+
+        int flipsThisPass = 0;
+        for (int s : slivers) {
+            if (s >= static_cast<int>(mesh.tets.size())) continue;   // removed by an earlier 3-2 flip
+            const Tet t = mesh.tets[s];
+            if (worstQuality(mesh, &t, 1) >= threshold) continue;    // already replaced by a better tet
+
+            bool flipped = false;
+            int V[4] = {t.v0, t.v1, t.v2, t.v3};
+            for (int a = 0; a < 4 && !flipped; a++) {
+                for (int b = a + 1; b < 4 && !flipped; b++) {
+                    if (hull[V[a]] || hull[V[b]]) continue;
+                    if (tryFlipEdge(mesh, vt, V[a], V[b])) flipped = true;
+                }
+            }
+            if (!flipped && tryFlipFace(mesh, s)) flipped = true;
+
+            if (flipped) {
+                flipsThisPass++;
+                vt = vertexTets(mesh);   // tet indices changed
+            }
+        }
+
+        if (flipsThisPass == 0) break;
+        flips += flipsThisPass;
+    }
+    return flips;
+}
+
+// Alternates sliver removal with Laplacian smoothing (guarded, so no move makes a tet worse).
+// Stops early when a round changes nothing. Returns the total number of flips.
+int improveSlivers(TetMesh& mesh, double threshold, int rounds) {
+    int flips = 0;
+    for (int r = 0; r < rounds; r++) {
+        int f = removeSlivers(mesh, threshold, 100000);
+        int moves = laplacianSmooth3d(mesh, 3);
+        flips += f;
+        if (f == 0 && moves == 0) break;
+    }
+    return flips;
 }

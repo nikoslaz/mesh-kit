@@ -40,6 +40,18 @@ in ParaView. Coloured by MeshKit's own radius ratio `3r/R` (`tetQualities`): 1 i
 tets on the outer skin of the convex hull. Plain Delaunay does not remove these slivers, which is
 what a quality 3D mesher has to add.*
 
+### Sliver removal
+
+| Before (1,312 slivers) | After flips + smoothing (881 slivers) |
+|---|---|
+| ![slivers before](docs/images/tets_before.png) | ![slivers after](docs/images/tets_after.png) |
+
+*`meshkit_cli tets 0.1 2000`: the cube corners plus 2,000 random points, showing only the tets
+with radius ratio below 0.1, cut open with a crinkle clip (same camera and colour range in both).
+Inside the cube, flips and smoothing replace many thin slivers with fewer, larger tets. The dark
+skin on the cube faces is the same in both: those flat tets lie against the hull, which the flips
+never change.*
+
 ## Features
 
 - **Delaunay triangulation** (Bowyer-Watson) using robust adaptive-precision orientation and
@@ -58,6 +70,11 @@ what a quality 3D mesher has to add.*
   holes) and a limit on the radius-edge ratio, and it returns a mesh whose triangles all
   respect the limit, with every boundary segment kept as mesh edges (see below).
 - **Quality metrics**: per-triangle minimum angle and radius-edge ratio; per-tet radius ratio.
+- **Sliver removal** (3D): 3-2 and 2-3 flips, each accepted only if the worst tet around it gets
+  better, alternated with guarded Laplacian smoothing. Edges and faces on the hull are never
+  changed, and neighbours are updated locally after each flip. On 10,000 random points plus the
+  cube corners, slivers below 0.1 fall from 4,181 to 2,494 in 3.6 s (the ones away from the hull
+  roughly halve), while the mesh stops being Delaunay (see `docs/benchmarks.md`).
 - **Laplacian smoothing**: interior vertices move to the average of their neighbours;
   boundary vertices stay fixed.
 - **Mesh I/O** behind abstract `MeshReader` / `MeshWriter` interfaces, created by
@@ -145,6 +162,7 @@ ctest --test-dir build --output-on-failure   # or: ./test.sh
 ./build/meshkit_cli tests/convert.cfg   # convert according to a config file
 ./build/meshkit_cli demo                # writes output/random60_before/after.vtk
 ./build/meshkit_cli plate [ratio] [n]   # quality mesh of a plate with a hole, see above
+./build/meshkit_cli tets [thr] [n]      # 3D: random points, then sliver removal; writes output/tets_before/after.vtk
 ```
 
 Config file (`tests/convert.cfg`):
@@ -196,7 +214,7 @@ include/        public headers (mesh, geometry, delaunay, delaunay3d, domain, re
                 smoothing, mesh_io, vtk_writer, predicate)
 src/            library implementation (libmeshkit); predicate.c is Shewchuk's C code
 apps/main.cpp   meshkit_cli
-tests/          unit tests (geometry, Delaunay, domain, refinement, topology, I/O),
+tests/          unit tests (geometry, Delaunay 2D/3D, sliver removal, domain, refinement, topology, I/O),
                 sample config and meshes in tests/data/
 scripts/        Python sample generator and batch quality report
 docs/images/    screenshots used in this README
@@ -223,6 +241,8 @@ output/         generated files (VTK, Nastran, CSV); not committed
 
 ## Roadmap
 
+- Restoring the Delaunay property after sliver removal (currently many tets are not Delaunay afterwards)
+- Sliver removal next to the hull, and point insertion for slivers that flips cannot fix
 - Multithreaded smoothing and quality evaluation, with benchmarks on large meshes
 - A maximum triangle area, so the mesh can also be graded by size and not only by shape
 - Reading a domain (points, segments, holes) from a file instead of the built-in plate

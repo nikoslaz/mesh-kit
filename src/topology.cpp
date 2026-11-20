@@ -1,5 +1,6 @@
 #include "topology.hpp"
 #include "geometry.hpp"
+#include "quality.hpp"
 #include "delaunay.hpp"
 #include <algorithm>
 #include <array>
@@ -316,3 +317,60 @@ int walkToTet(const TetMesh& mesh, int start, const Point3& p) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
+std::vector<int> tetsAroundEdge(const TetMesh& mesh, const std::vector<std::vector<int>>& vt, int u, int v) {
+    std::vector<int> result;
+
+    for (const auto& i : vt[u]) {
+        const Tet& t = mesh.tets[i];
+        if (t.v0 == u || t.v1 == u || t.v2 == u || t.v3 == u) {
+            if (t.v0 == v || t.v1 == v || t.v2 == v || t.v3 == v) {
+                result.push_back(static_cast<int>(i));
+            }
+        }
+    }
+
+    return result;
+}
+
+bool tryFlipEdge(TetMesh& mesh, const std::vector<std::vector<int>>& vt, int u, int v) {
+    std::vector<int> around = tetsAroundEdge(mesh, vt, u, v);
+
+    if (around.size() == 3) {
+        Tet old[3] = {mesh.tets[around[0]], mesh.tets[around[1]], mesh.tets[around[2]]};
+        Tet out[2];
+        bool result =  flip32Tets(mesh, around[0], around[1], around[2], out);
+        if (result == false) { return false; }
+
+        double oldQual = worstQuality(mesh, old, 3);
+        double newQual = worstQuality(mesh, out, 2);
+        if (newQual <= oldQual) { return false; }
+
+        apply32(mesh, around[0], around[1], around[2]);
+
+        return true;
+    }
+
+    return false;
+}
+
+// Tries the 2-3 flip on each face of tet t that has a neighbour (interior faces only, so the hull
+// is not touched). Accepted only if the worst of the three new tets beats the worst of the two old.
+bool tryFlipFace(TetMesh& mesh, int t) {
+    const Tet t1 = mesh.tets[t];
+    int ns[4] = {t1.n0, t1.n1, t1.n2, t1.n3};
+    for (int i = 0; i < 4; i++) {
+        int n = ns[i];
+        if (n == -1) continue;
+
+        Tet out[3];
+        if (!flip23Tets(mesh, t, n, out)) continue;
+
+        Tet old[2] = {mesh.tets[t], mesh.tets[n]};
+        if (worstQuality(mesh, out, 3) <= worstQuality(mesh, old, 2)) continue;
+
+        apply23(mesh, t, n);
+        return true;
+    }
+    return false;
+}

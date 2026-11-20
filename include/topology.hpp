@@ -38,4 +38,10 @@ void setNeighbour(Tet& tet, int a, int b, int c,int other); // 3D
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
+std::vector<int> tetsAroundEdge(const TetMesh& mesh, const std::vector<std::vector<int>>& vt, int u, int v);
+bool tryFlipEdge(TetMesh& mesh, const std::vector<std::vector<int>>& vt, int u, int v);
+bool tryFlipFace(TetMesh& mesh, int t); // 2-3 flip on one face of tet t
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 #endif

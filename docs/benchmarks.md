@@ -100,3 +100,45 @@ The walk start and the ordering help only a little: at 100,000 points about 1.4 
 0.4 s is rebuilding the neighbours after the super tetrahedron is removed. Removing the
 per-insertion allocations changed nothing, so the cost is spread over the predicates and the
 cavity bookkeeping.
+
+## 3D sliver removal
+
+`meshkit_cli tets` on the cube corners plus random points (seed 42), threshold 0.1, `-O2`, the
+same Linux sandbox as above. `improveSlivers` runs up to 20 rounds of flips and smoothing.
+
+```
+  points   tets before   slivers before   tets after   slivers after   flips   seconds
+     300          1915              323         1853             240      76     0.03
+    1000          6556              803         6372             544     204     0.13
+    3000         19875             1721        19419            1139     506     0.55
+   10000         66821             4181        65518            2494    1433     3.56
+```
+
+Worst radius ratio does not change (1.6e-6 at 300 points): the worst tets are flat tets against
+the convex hull, and the hull is never changed. Slivers that touch a hull vertex barely move
+(491 -> 473 at 10,000 points); the other slivers drop by about 45-50% (3690 -> 2021).
+
+### Speed: local neighbour updates
+
+The first version rebuilt the neighbours of the whole mesh after every flip (40 ms at 66,000 tets)
+and made one flip per pass, so the time grew about as the square of the number of flips. Now
+`apply23` / `apply32` re-link only the faces of the new tets and their outside neighbours, and
+`apply32` removes a tet by moving the last tet into its slot instead of shifting the array. A pass
+tries every sliver once, skipping tets that an earlier flip already replaced. The local update was
+checked against a full `buildNeighbours` after each of 666 random flips (identical).
+
+```
+  points   one flip per pass + full rebuild   now     speed-up
+     300                          0.098 s     0.029 s     3x
+    2000                          3.18 s      0.31 s     10x
+   10000                         75.1 s       3.58 s     21x
+```
+
+What is left is rebuilding the vertex-to-tets lists after each flip (about 1.7 ms at 66,000 tets).
+
+### Delaunay property
+
+Before removal no tet has a point inside its circumsphere. After removal they do: 693 of 1853 tets
+at 300 points, 5739 of 19419 at 3000. The flips choose tets by quality, not by the
+empty-circumsphere rule, so the result is no longer a Delaunay triangulation. That is a
+trade-off, not a bug, but it must be kept in mind when using these meshes.
