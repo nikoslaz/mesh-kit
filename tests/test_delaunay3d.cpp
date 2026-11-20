@@ -237,22 +237,44 @@ int main() {
     }
 
     {
-        // KNOWN BUG: the super-tet is finite. A point very close to a hull face gives flat tets with a huge
-        // circumsphere that reaches a super-tet corner, so the face links to that corner and the tets between
-        // the point and the face are lost in removeSuperTet. Fix: one symbolic vertex at infinity (ghost tets).
-        // Reported but not counted as a failure; when it starts passing, make it a normal checkBool.
-        std::cout << "--- point very close to a hull face (known bug) ---\n";
+        // Regression: with the old finite super-tet, a point very close to a hull face lost the thin tets
+        // between it and the face (their circumsphere reached a super-tet corner). Ghost tets fix this.
+        std::cout << "--- points very close to / exactly on hull faces ---\n";
         std::vector<Point3> pts = cube;
-        pts.push_back({0.4, 0.3, 1e-9});
+        for (double h : {1e-3, 1e-9, 1e-15}) pts.push_back({0.4, 0.3, h});
+        pts.push_back({0.7, 0.2, 0.0});   // exactly on the face z = 0
+        pts.push_back({0.5, 1.0, 0.5});   // exactly on the face y = 1
         TetMesh m = delaunay3d(pts);
-        int touching = 0;
-        for (const auto& kv : buildFaceMap(m))
-            if (kv.second.size() == 1)
-                for (int v : kv.first) if (v == 8) { ++touching; break; }
-        if (touching == 0)
-            std::cout << "FIXED  no hull face touches the near point: turn this into a normal check\n";
-        else
-            std::cout << "KNOWN BUG  " << touching << " hull faces touch the near point (should be 0)\n";
+        checkMesh("near and on hull faces", m);
+        checkNear("volume = 1", totalVolume(m), 1.0, 1e-12);
+        int offHull = 0;
+        for (const auto& kv : buildFaceMap(m)) {
+            if (kv.second.size() != 1) continue;
+            const Point3 &a = m.points[kv.first[0]], &b = m.points[kv.first[1]], &c = m.points[kv.first[2]];
+            bool onCube = (a.x == b.x && b.x == c.x && (a.x == 0 || a.x == 1)) ||
+                          (a.y == b.y && b.y == c.y && (a.y == 0 || a.y == 1)) ||
+                          (a.z == b.z && b.z == c.z && (a.z == 0 || a.z == 1));
+            if (!onCube) ++offHull;
+        }
+        checkBool("every hull face lies on the cube surface", offHull == 0, true);
+    }
+    {
+        std::cout << "--- 5x5x5 grid (cospherical and coplanar points everywhere) ---\n";
+        std::vector<Point3> pts;
+        for (int i = 0; i <= 4; ++i)
+            for (int j = 0; j <= 4; ++j)
+                for (int k = 0; k <= 4; ++k) pts.push_back({i / 4.0, j / 4.0, k / 4.0});
+        TetMesh m = delaunay3d(pts);
+        checkMesh("grid", m);
+        checkNear("volume = 1", totalVolume(m), 1.0, 1e-12);
+    }
+    {
+        std::cout << "--- degenerate inputs ---\n";
+        TetMesh flat = delaunay3d({{0,0,0}, {1,0,0}, {0,1,0}, {1,1,0}, {2,3,0}});
+        checkBool("all coplanar: no tets, points kept", flat.tets.empty() && flat.points.size() == 5, true);
+        TetMesh m = delaunay3d({{0,0,0}, {1,1,1}, {2,2,2}, {0,0,0}, {3,3,3}, {0,1,0}, {5,5,5}, {0,0,1}});
+        checkBool("collinear and duplicate points first: still builds tets", !m.tets.empty(), true);
+        checkBool("  ... all positive", countNonPositive(m) == 0, true);
     }
 
     std::cout << (failures == 0 ? "\nAll tests passed.\n" : "\nSome tests FAILED.\n");

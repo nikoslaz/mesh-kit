@@ -17,6 +17,8 @@ struct CavityEdge {
     int owner;     // the cavity triangle this edge belongs to
 };
 
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
+
 Mesh makeSuperTriangle(const std::vector<Point>& points) {
     Mesh mesh;
     if (points.empty()) return mesh;
@@ -55,6 +57,29 @@ Mesh makeSuperTriangle(const std::vector<Point>& points) {
 
     return mesh;
 }
+
+void removeSuperTriangle(Mesh& mesh) { 
+    std::vector<Triangle> result;
+
+    for (const auto& tri : mesh.meshTriangle) {
+        if (tri.v0 >= 3 && tri.v1 >= 3 && tri.v2 >= 3) {
+            result.push_back(tri);
+        }
+    }
+
+    for (auto& tri : result) {
+        tri.v0 -= 3;
+        tri.v1 -= 3;
+        tri.v2 -= 3;
+    }
+
+    mesh.meshPoint.erase(mesh.meshPoint.begin(), mesh.meshPoint.begin() + 3);
+    mesh.meshTriangle = result;
+    mesh.lastTriangle = 0;   // the triangles were renumbered
+    buildNeighbours(mesh);   // triangle indices changed, so the old neighbours are invalid
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 static std::vector<int> findCavity(const Mesh& mesh, int start, const Point& p) {
     std::vector<int> cavity;
@@ -113,6 +138,8 @@ static std::vector<CavityEdge> cavityBoundary(const Mesh& mesh, const std::vecto
 
     return cavityEdge;
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 // Bowyer-Watson insertion using neighbours:
 //   1. walk to the triangle containing p
@@ -208,26 +235,7 @@ int insertPoint(Mesh& mesh, Point p, InsertChange* change) {
     return idx;
 }
 
-void removeSuperTriangle(Mesh& mesh) { 
-    std::vector<Triangle> result;
-
-    for (const auto& tri : mesh.meshTriangle) {
-        if (tri.v0 >= 3 && tri.v1 >= 3 && tri.v2 >= 3) {
-            result.push_back(tri);
-        }
-    }
-
-    for (auto& tri : result) {
-        tri.v0 -= 3;
-        tri.v1 -= 3;
-        tri.v2 -= 3;
-    }
-
-    mesh.meshPoint.erase(mesh.meshPoint.begin(), mesh.meshPoint.begin() + 3);
-    mesh.meshTriangle = result;
-    mesh.lastTriangle = 0;   // the triangles were renumbered
-    buildNeighbours(mesh);   // triangle indices changed, so the old neighbours are invalid
-}
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 // Insertion order: the points sorted into rows of cells, alternating direction from row to
 // row (a "snake"), so each point is close to the previous one and the walk stays short.
@@ -253,6 +261,8 @@ static std::vector<int> spatialOrder(const std::vector<Point>& points) {
     });
     return order;
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------ //
 
 Mesh delaunay(const std::vector<Point>& points) {
     if (points.empty()) return Mesh{};
